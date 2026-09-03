@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ p.role_title }} — Interview Prep</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/interview">← Interview Prep</a>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+      <div>
+        <h1>{{ p.role_title }}</h1>
+        <div class="sub">{{ p.company or '' }}</div>
+      </div>
+      {% if p.status=='generated' %}<span class="badge ok"><span class="dot"></span>Ready</span>
+      {% elif p.status=='generating' %}<span class="badge run"><span class="dot"></span>Generating…</span>
+      {% elif p.status=='failed' %}<span class="badge err"><span class="dot"></span>Failed</span>
+      {% else %}<span class="badge idle"><span class="dot"></span>Not generated</span>{% endif %}
+    </div>
+    <div style="display:flex;gap:9px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn primary" onclick="generate()">{{ 'Regenerate' if p.status=='generated' else 'Generate prep' }}</button>
+      {% if p.prep_pdf %}<a class="btn" href="/interview/{{ p.id }}/pdf" target="_blank">Open PDF</a>{% endif %}
+      <form method="post" action="/interview/{{ p.id }}/delete" style="margin:0"
+            onsubmit="return confirm('Delete this interview prep?')">
+        <button class="btn danger">Delete</button>
+      </form>
+    </div>
+    {% if p.error %}<div class="banner warn" style="margin-top:14px">⚠ {{ p.error }}</div>{% endif %}
+  </div>
+
+  <div class="panel" id="logPanel" style="{{ '' if job and job.running else 'display:none' }}">
+    <b>Generating…</b>
+    <div class="log" id="log" style="margin-top:10px">Starting…</div>
+  </div>
+
+  {% if questions %}
+  <div class="tabs">
+    <button class="active" onclick="showTab('rehearse',this)">Rehearse ({{ questions|length }})</button>
+    <button onclick="showTab('list',this)">All questions</button>
+  </div>
+
+  <div id="rehearseView">
+    <div class="panel" style="text-align:center">
+      <div class="sub" id="qProgress">Question 1 / {{ questions|length }}</div>
+      <div class="flashcard" id="flashcard" onclick="flip()">
+        <div class="fc-inner" id="fcInner">
+          <div class="fc-face fc-front"><div id="qFront"></div></div>
+          <div class="fc-face fc-back" style="font-size:14px;text-align:left;overflow-y:auto"><div id="qBack"></div></div>
+        </div>
+      </div>
+      <div class="sub" style="margin-top:8px">Click to reveal a suggested approach</div>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+        <button class="btn" onclick="prevQ()">← Prev</button>
+        <button class="btn primary" onclick="nextQ()">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="listView" style="display:none">
+    <div class="panel">
+      {% for q in questions %}
+      <div style="margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)">
+        <div><span class="chip">{{ q.type or 'question' }}</span></div>
+        <b style="display:block;margin:6px 0">{{ q.q }}</b>
+        <div class="sub">{{ q.approach }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% elif p.status=='generated' %}
+  <div class="panel"><div class="sub">Prep document generated — open the PDF above.
+    (No rehearsal questions were produced for this one; regenerate to try again.)</div></div>
+  {% endif %}
+</div>
+
+<script>
+const IID = "{{ p.id }}";
+async function generate(){
+  const r = await fetch('/interview/'+IID+'/generate', {method:'POST'});
+  const j = await r.json();
+  if(j.status === 'error'){ alert(j.message); return; }
+  document.getElementById('logPanel').style.display = 'block';
+  poll();
+}
+async function poll(){
+  const r = await fetch('/api/interview/'+IID);
+  const j = await r.json();
+  if(j.job){
+    document.getElementById('log').textContent = (j.job.log||[]).join('\n') || 'Starting…';
+  }
+  const running = j.job && j.job.running;
+  if(running){ setTimeout(poll, 1500); } else { setTimeout(()=>location.reload(), 800); }
+}
+{% if job and job.running %}poll();{% endif %}
+
+{% if questions %}
+const QS = {{ questions|tojson }};
+let qi = 0, qflip = false;
+function renderQ(){
+  document.getElementById('qFront').textContent = QS[qi].q;
+  document.getElementById('qBack').textContent = QS[qi].approach || '(no approach provided)';
+  document.getElementById('qProgress').textContent = `Question ${qi+1} / ${QS.length}`;
+  qflip = false; document.getElementById('fcInner').classList.remove('flipped');
+}
+function flip(){ qflip=!qflip; document.getElementById('fcInner').classList.toggle('flipped', qflip); }
+function nextQ(){ qi=(qi+1)%QS.length; renderQ(); }
+function prevQ(){ qi=(qi-1+QS.length)%QS.length; renderQ(); }
+function showTab(w, el){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('rehearseView').style.display = w==='rehearse'?'block':'none';
+  document.getElementById('listView').style.display = w==='list'?'block':'none';
+}
+renderQ();
+{% endif %}
+</script>
+</body>
+</html>

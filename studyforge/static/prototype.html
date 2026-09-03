@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyForge — V2 Prototype</title>
+<style>
+  :root{
+    --bg:#0e1116; --bg-2:#161b22; --panel:#1c232d; --panel-2:#222b36;
+    --line:#2b3542; --line-2:#374253;
+    --text:#e6edf3; --muted:#9aa7b4; --faint:#6b7683;
+    --brand:#6ea8fe; --brand-2:#4f7dd6; --accent:#7ee3c2;
+    --ok:#4ade80; --warn:#fbbf24; --err:#f87171; --info:#60a5fa;
+    --radius:14px; --radius-sm:9px;
+    --shadow:0 8px 30px rgba(0,0,0,.35);
+    --font:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--brand);text-decoration:none}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#2c3542;border-radius:8px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* Layout */
+  .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+  .sidebar{background:linear-gradient(180deg,#12161c,#0e1116);border-right:1px solid var(--line);
+    padding:20px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:6px}
+  .logo{display:flex;align-items:center;gap:10px;padding:6px 8px 18px}
+  .logo .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--brand),var(--accent));
+    display:grid;place-items:center;font-weight:800;color:#0c1017;font-size:16px}
+  .logo b{font-size:16px;letter-spacing:.2px}
+  .logo small{display:block;color:var(--faint);font-size:11px;font-weight:400;letter-spacing:.3px}
+  .nav{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+  .nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:var(--muted);
+    font-weight:500;cursor:pointer;transition:.15s}
+  .nav a:hover{background:var(--panel);color:var(--text)}
+  .nav a.active{background:var(--panel-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-2)}
+  .nav a .ic{width:18px;text-align:center;opacity:.9}
+  .sidebar .spacer{flex:1}
+  .sidebar .usage{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px}
+  .sidebar .usage .row{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .bar{height:6px;background:#0d1117;border-radius:6px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--accent))}
+
+  .main{padding:26px 34px 60px;max-width:1160px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap}
+  .topbar h1{font-size:22px;margin:0;letter-spacing:.2px}
+  .topbar .sub{color:var(--muted);font-size:13px;margin-top:3px}
+  .search{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:9px 13px;color:var(--text);
+    min-width:230px;font-size:13px}
+  .search::placeholder{color:var(--faint)}
+
+  /* Buttons */
+  .btn{border:1px solid var(--line-2);background:var(--panel);color:var(--text);padding:9px 15px;border-radius:9px;
+    font-weight:600;font-size:13px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:8px}
+  .btn:hover{background:var(--panel-2);border-color:#44536a}
+  .btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));border:none;color:#0c1017}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:6px 11px;font-size:12px}
+  .btn.danger{color:var(--err);border-color:#5a2b2b}
+  .btn.danger:hover{background:#2a1717}
+
+  /* Cards / grid */
+  .grid{display:grid;gap:16px}
+  .grid.lib{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+    transition:.16s;position:relative}
+  .card.book{cursor:pointer}
+  .card.book:hover{transform:translateY(-3px);border-color:var(--line-2);box-shadow:var(--shadow)}
+  .card .cover{height:96px;background:linear-gradient(135deg,#26405f,#182635);display:flex;align-items:flex-end;
+    padding:14px;position:relative}
+  .card .cover.g2{background:linear-gradient(135deg,#3a2f5f,#1e1b32)}
+  .card .cover.g3{background:linear-gradient(135deg,#2f5f4a,#182f26)}
+  .card .cover.g4{background:linear-gradient(135deg,#5f3a2f,#301c18)}
+  .card .cover .type{position:absolute;top:12px;left:14px;font-size:10.5px;font-weight:700;letter-spacing:.6px;
+    text-transform:uppercase;background:rgba(0,0,0,.35);padding:4px 8px;border-radius:6px;color:#dfe8f2}
+  .card .cover .pages{position:absolute;top:12px;right:14px;font-size:11px;color:#c8d4e0;background:rgba(0,0,0,.3);
+    padding:4px 8px;border-radius:6px}
+  .card .body{padding:15px 16px 16px}
+  .card .body h3{margin:0 0 3px;font-size:15.5px}
+  .card .body .auth{color:var(--muted);font-size:12.5px;margin-bottom:12px}
+  .meta-row{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:9px}
+  .meta-row b{color:var(--text);font-weight:600}
+
+  .progress-line{height:7px;background:#0d1117;border-radius:6px;overflow:hidden;margin:10px 0 4px}
+  .progress-line > i{display:block;height:100%}
+  .progress-line > i.ok{background:linear-gradient(90deg,var(--ok),#22c55e)}
+  .progress-line > i.mid{background:linear-gradient(90deg,var(--brand),var(--accent))}
+  .progress-line > i.warn{background:linear-gradient(90deg,var(--warn),#f59e0b)}
+
+  /* Badges */
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 9px;
+    border-radius:20px;border:1px solid transparent}
+  .badge .dot{width:7px;height:7px;border-radius:50%}
+  .badge.ok{color:#bbf7d0;background:#12281c;border-color:#1f4d33}.badge.ok .dot{background:var(--ok)}
+  .badge.run{color:#bfdbfe;background:#12233b;border-color:#1e3a5f}.badge.run .dot{background:var(--info);
+    animation:pulse 1.3s infinite}
+  .badge.warn{color:#fde68a;background:#2b230f;border-color:#5a4a1b}.badge.warn .dot{background:var(--warn)}
+  .badge.err{color:#fecaca;background:#2b1414;border-color:#5a2626}.badge.err .dot{background:var(--err)}
+  .badge.idle{color:var(--muted);background:#171d25;border-color:var(--line)}.badge.idle .dot{background:var(--faint)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* Sections */
+  .section-title{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);
+    font-weight:700;margin:26px 0 12px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .split{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+  @media(max-width:900px){.split{grid-template-columns:1fr}.app{grid-template-columns:1fr}.sidebar{display:none}}
+
+  /* Book detail header */
+  .book-hero{display:flex;gap:20px;align-items:flex-start}
+  .book-hero .thumb{width:110px;height:150px;border-radius:11px;flex:none;
+    background:linear-gradient(135deg,#26405f,#141f2c);display:grid;place-items:center;font-size:34px;
+    box-shadow:var(--shadow)}
+  .book-hero h1{margin:0 0 4px;font-size:24px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin-top:14px;font-size:13px}
+  .kv .k{color:var(--faint)}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .chip{font-size:11.5px;background:var(--panel-2);border:1px solid var(--line-2);padding:4px 10px;border-radius:20px;
+    color:var(--muted)}
+
+  /* TOC list */
+  .toc{margin-top:6px}
+  .toc .row{display:flex;align-items:center;gap:14px;padding:12px 12px;border-radius:10px;border:1px solid transparent}
+  .toc .row:hover{background:var(--bg-2);border-color:var(--line)}
+  .toc .num{width:26px;height:26px;border-radius:7px;background:var(--panel-2);display:grid;place-items:center;
+    font-size:12px;color:var(--muted);flex:none;border:1px solid var(--line)}
+  .toc .row .t{flex:1;min-width:0}
+  .toc .row .t b{font-weight:600;font-size:13.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .toc .row .t small{color:var(--faint);font-size:11.5px}
+
+  /* Pipeline / processing */
+  .pipeline{display:flex;align-items:center;gap:0;margin:8px 0 22px;flex-wrap:wrap}
+  .stage{display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;min-width:104px}
+  .stage .ring{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-size:16px;
+    border:2px solid var(--line-2);background:var(--panel);color:var(--muted);z-index:1}
+  .stage.done .ring{background:#12281c;border-color:var(--ok);color:var(--ok)}
+  .stage.active .ring{background:#12233b;border-color:var(--info);color:var(--info);
+    box-shadow:0 0 0 5px rgba(96,165,250,.14);animation:pulse 1.6s infinite}
+  .stage .lb{font-size:11.5px;color:var(--muted);text-align:center}
+  .stage.active .lb,.stage.done .lb{color:var(--text)}
+  .connector{height:2px;flex:1;min-width:26px;background:var(--line);margin-top:-24px}
+  .connector.done{background:var(--ok)}
+
+  .log{background:#0b0e13;border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-family:
+    'Cascadia Code',Consolas,monospace;font-size:12.5px;color:#cbd5e1;max-height:230px;overflow:auto}
+  .log .l{padding:2px 0;white-space:pre-wrap}
+  .log .t{color:var(--faint)}
+  .log .ok{color:var(--ok)}.log .in{color:var(--info)}.log .wn{color:var(--warn)}.log .er{color:var(--err)}
+
+  /* Results / summary reader */
+  .reader{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:0;overflow:hidden}
+  .reader .rhead{padding:16px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;
+    align-items:center;gap:12px;flex-wrap:wrap;background:var(--bg-2)}
+  .reader .rbody{padding:24px 30px;max-height:520px;overflow:auto}
+  .reader h2{font-size:19px;margin:0 0 2px}
+  .reader .rbody h3{font-size:15px;color:var(--brand);margin:20px 0 8px;border-bottom:1px solid var(--line);
+    padding-bottom:6px}
+  .reader .rbody p{color:#cdd6df;margin:8px 0}
+  .reader .rbody ul{margin:8px 0;padding-left:20px;color:#cdd6df}
+  .reader .rbody li{margin:5px 0}
+  .keytable{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  .keytable th,.keytable td{border:1px solid var(--line);padding:8px 11px;text-align:left}
+  .keytable th{background:var(--panel-2);color:var(--text)}
+  .keytable td{color:#cdd6df}
+  .grounded{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:#bbf7d0;background:#12281c;
+    border:1px solid #1f4d33;padding:4px 10px;border-radius:20px}
+
+  /* Empty / error states */
+  .empty{text-align:center;padding:60px 20px;color:var(--muted)}
+  .empty .big{font-size:44px;margin-bottom:14px;opacity:.7}
+  .empty h3{color:var(--text);margin:0 0 6px}
+  .banner{display:flex;gap:14px;align-items:flex-start;border-radius:12px;padding:15px 18px;margin-bottom:16px}
+  .banner.err{background:#241214;border:1px solid #5a2626}
+  .banner.warn{background:#241f0f;border:1px solid #5a4a1b}
+  .banner .bi{font-size:20px;line-height:1}
+  .banner h4{margin:0 0 3px;font-size:14px}
+  .banner p{margin:0;color:var(--muted);font-size:13px}
+  .banner code{background:rgba(255,255,255,.07);padding:1px 6px;border-radius:5px;font-size:12px}
+
+  /* Output/delivery */
+  .delivery-item{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);
+    border-radius:11px;margin-bottom:10px;background:var(--bg-2)}
+  .delivery-item .di{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;font-size:17px;flex:none}
+  .di.mail{background:#12233b;color:var(--info)}.di.file{background:#12281c;color:var(--ok)}
+  .di.fail{background:#2b1414;color:var(--err)}
+  .delivery-item .grow{flex:1;min-width:0}
+  .delivery-item .grow b{font-size:13.5px}
+  .delivery-item .grow small{display:block;color:var(--faint);font-size:12px}
+
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .tabs button{background:none;border:none;color:var(--muted);padding:10px 16px;font-size:13.5px;font-weight:600;
+    cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button:hover{color:var(--text)}
+  .tabs button.active{color:var(--text);border-bottom-color:var(--brand)}
+
+  .view{display:none}.view.active{display:block}
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 17px}
+  .stat .n{font-size:26px;font-weight:700;letter-spacing:.5px}
+  .stat .l{color:var(--muted);font-size:12px;margin-top:2px}
+  .stat .n.ok{color:var(--ok)}.stat .n.br{color:var(--brand)}.stat .n.wn{color:var(--warn)}
+  @media(max-width:700px){.stat-row{grid-template-columns:repeat(2,1fr)}}
+
+  .back{color:var(--muted);cursor:pointer;font-size:13px;display:inline-flex;align-items:center;gap:7px;margin-bottom:14px}
+  .back:hover{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="mark">SF</div>
+      <div><b>StudyForge</b><small>study material engine</small></div>
+    </div>
+    <nav class="nav">
+      <a class="active" onclick="go('library',this)"><span class="ic">▤</span> Library</a>
+      <a onclick="go('processing',this)"><span class="ic">⚙</span> Processing</a>
+      <a onclick="go('delivery',this)"><span class="ic">✉</span> Delivery</a>
+      <a onclick="go('settings',this)"><span class="ic">⚙</span> Settings</a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="usage">
+      <div class="row"><span>API budget</span><b style="color:var(--text)">$4.10 / $15</b></div>
+      <div class="bar"><i style="width:27%"></i></div>
+      <div class="row" style="margin:8px 0 0"><span>This month</span><span>62 summaries</span></div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ============ LIBRARY ============ -->
+    <section id="library" class="view active">
+      <div class="topbar">
+        <div>
+          <h1>Library</h1>
+          <div class="sub">4 materials · 62 summaries generated · last activity 2h ago</div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input class="search" placeholder="Search materials…">
+          <button class="btn">＋ Add Material</button>
+          <button class="btn primary">＋ Add Textbook</button>
+        </div>
+      </div>
+
+      <div class="grid lib">
+        <!-- Book 1: complete -->
+        <div class="card book" onclick="openBook()">
+          <div class="cover"><span class="type">Textbook</span><span class="pages">742 pp</span></div>
+          <div class="body">
+            <h3>CompTIA Network+ Guide</h3>
+            <div class="auth">Mike Meyers · N10-009</div>
+            <span class="badge ok"><span class="dot"></span>Complete</span>
+            <div class="progress-line"><i class="ok" style="width:100%"></i></div>
+            <div class="meta-row"><span>21 / 21 chapters</span><b>Processed Aug 14</b></div>
+            <div class="meta-row"><span>Outputs</span><b>21 PDF · 21 MD</b></div>
+          </div>
+        </div>
+
+        <!-- Book 2: processing -->
+        <div class="card book" onclick="go('processing',document.querySelectorAll('.nav a')[1])">
+          <div class="cover g2"><span class="type">Textbook</span><span class="pages">610 pp</span></div>
+          <div class="body">
+            <h3>Security+ Study Guide</h3>
+            <div class="auth">Chapple &amp; Seidl · SY0-701</div>
+            <span class="badge run"><span class="dot"></span>Summarizing 14/28</span>
+            <div class="progress-line"><i class="mid" style="width:50%"></i></div>
+            <div class="meta-row"><span>14 / 28 chapters</span><b>Started 2h ago</b></div>
+            <div class="meta-row"><span>Est. remaining</span><b>~6 min</b></div>
+          </div>
+        </div>
+
+        <!-- Book 3: error -->
+        <div class="card book" onclick="openBook()">
+          <div class="cover g3"><span class="type">Research Paper</span><span class="pages">18 pp</span></div>
+          <div class="body">
+            <h3>PyRIT: Red-Teaming Framework</h3>
+            <div class="auth">Microsoft · arXiv material</div>
+            <span class="badge warn"><span class="dot"></span>2 sections failed</span>
+            <div class="progress-line"><i class="warn" style="width:78%"></i></div>
+            <div class="meta-row"><span>7 / 9 sections</span><b>Needs attention</b></div>
+            <div class="meta-row"><span>Issue</span><b style="color:var(--warn)">API timeout ×2</b></div>
+          </div>
+        </div>
+
+        <!-- Book 4: language -->
+        <div class="card book" onclick="openBook()">
+          <div class="cover g4"><span class="type">Language</span><span class="pages">320 pp</span></div>
+          <div class="body">
+            <h3>Aula Internacional 1</h3>
+            <div class="auth">Difusión · Spanish A1</div>
+            <span class="badge idle"><span class="dot"></span>Not processed</span>
+            <div class="progress-line"><i class="mid" style="width:0%"></i></div>
+            <div class="meta-row"><span>12 units detected</span><b>—</b></div>
+            <div class="meta-row"><span>Content type</span><b>Vocab · Grammar · Drills</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Add your first material — empty state preview</div>
+      <div class="panel">
+        <div class="empty" style="padding:40px 20px">
+          <div class="big">📚</div>
+          <h3>No materials yet</h3>
+          <p>Add a textbook PDF, a research paper, or a language workbook to get started.<br>
+             StudyForge detects its structure, then generates grounded study summaries.</p>
+          <div style="margin-top:16px;display:flex;gap:10px;justify-content:center">
+            <button class="btn primary">Add Textbook</button>
+            <button class="btn">Add Material / URL</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ BOOK DETAIL ============ -->
+    <section id="book" class="view">
+      <div class="back" onclick="go('library',document.querySelectorAll('.nav a')[0])">← Back to Library</div>
+
+      <div class="panel">
+        <div class="book-hero">
+          <div class="thumb">📘</div>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+              <div>
+                <h1>CompTIA Network+ Guide</h1>
+                <div style="color:var(--muted)">Mike Meyers · All-in-One Exam Guide</div>
+              </div>
+              <span class="badge ok"><span class="dot"></span>Processing complete</span>
+            </div>
+            <div class="kv">
+              <span class="k">Exam</span><span>CompTIA Network+ (N10-009)</span>
+              <span class="k">Source</span><span>netplus_n10-009.pdf · 742 pages · 18.4 MB</span>
+              <span class="k">Structure</span><span>21 chapters detected from PDF bookmarks</span>
+              <span class="k">Content type</span><span>Certification textbook</span>
+              <span class="k">Processed</span><span>Aug 14, 2026 · cost $2.60 · 21 API calls</span>
+            </div>
+            <div class="chips">
+              <span class="chip">21 PDF summaries</span>
+              <span class="chip">21 Markdown</span>
+              <span class="chip">✓ grounded to source</span>
+              <span class="chip">avg 4.2 pages</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:16px">
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="section-title" style="margin:0">Table of contents · detected sections</div>
+            <button class="btn sm">Regenerate all</button>
+          </div>
+          <div class="toc">
+            <div class="row"><div class="num">1</div><div class="t"><b>Network Models</b>
+              <small>pp. 3–34 · summary 4 pp</small></div><span class="badge ok"><span class="dot"></span>Done</span></div>
+            <div class="row"><div class="num">2</div><div class="t"><b>Cabling and Topology</b>
+              <small>pp. 35–68 · summary 5 pp</small></div><span class="badge ok"><span class="dot"></span>Done</span></div>
+            <div class="row"><div class="num">3</div><div class="t"><b>Ethernet Basics</b>
+              <small>pp. 69–96 · summary 4 pp</small></div><span class="badge ok"><span class="dot"></span>Done</span></div>
+            <div class="row" style="background:var(--bg-2);border-color:var(--line)">
+              <div class="num" style="border-color:var(--brand);color:var(--brand)">8</div>
+              <div class="t"><b>TCP/IP Applications</b>
+              <small>pp. 231–268 · summary 5 pp · viewing</small></div><span class="badge ok"><span class="dot"></span>Done</span></div>
+            <div class="row"><div class="num">9</div><div class="t"><b>Network Naming (DNS)</b>
+              <small>pp. 269–300 · summary 4 pp</small></div><span class="badge ok"><span class="dot"></span>Done</span></div>
+            <div class="row"><div class="num">…</div><div class="t"><b>Chapters 10–21</b>
+              <small>all generated · 12 more summaries</small></div><span class="badge ok"><span class="dot"></span>Done</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="panel" style="margin-bottom:16px">
+            <div class="section-title" style="margin:0 0 12px">Status</div>
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Extraction</span><span class="badge ok"><span class="dot"></span>21/21</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Structuring</span><span class="badge ok"><span class="dot"></span>Bookmarks</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Summarizing</span><span class="badge ok"><span class="dot"></span>21/21</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Delivery queue</span><span class="badge run"><span class="dot"></span>8 sent</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="section-title" style="margin:0 0 12px">Actions</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <button class="btn primary" style="justify-content:center" onclick="go('results',null)">Read summaries</button>
+              <button class="btn" style="justify-content:center">Export all as PDF bundle</button>
+              <button class="btn" style="justify-content:center">Send next to inbox</button>
+              <button class="btn danger" style="justify-content:center">Delete material</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROCESSING ============ -->
+    <section id="processing" class="view">
+      <div class="topbar">
+        <div><h1>Processing</h1><div class="sub">Security+ Study Guide · live pipeline</div></div>
+        <button class="btn danger">Cancel job</button>
+      </div>
+
+      <div class="panel">
+        <div class="pipeline">
+          <div class="stage done"><div class="ring">✓</div><div class="lb">Upload</div></div>
+          <div class="connector done"></div>
+          <div class="stage done"><div class="ring">✓</div><div class="lb">Extract text</div></div>
+          <div class="connector done"></div>
+          <div class="stage done"><div class="ring">✓</div><div class="lb">Structure</div></div>
+          <div class="connector done"></div>
+          <div class="stage done"><div class="ring">✓</div><div class="lb">Section map</div></div>
+          <div class="connector done"></div>
+          <div class="stage active"><div class="ring">◐</div><div class="lb">Summarize</div></div>
+          <div class="connector"></div>
+          <div class="stage"><div class="ring">✎</div><div class="lb">Finalize</div></div>
+          <div class="connector"></div>
+          <div class="stage"><div class="ring">✉</div><div class="lb">Deliver</div></div>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <b>Chapter 14 of 28 — “Wireless Security”</b>
+          <span style="color:var(--muted);font-size:13px">50% · ~6 min left · $1.50 spent</span>
+        </div>
+        <div class="progress-line" style="height:9px"><i class="mid" style="width:50%"></i></div>
+
+        <div class="section-title">Live log</div>
+        <div class="log">
+<div class="l"><span class="t">14:02:11</span> <span class="in">→</span> ch12 “Secure Protocols” · 3,140 words · sending to model…</div>
+<div class="l"><span class="t">14:02:39</span> <span class="ok">✓</span> ch12 summary written · 4 pp · grounded ✓ · $0.11</div>
+<div class="l"><span class="t">14:02:40</span> <span class="in">→</span> ch13 “Network Attacks” · 2,880 words · sending to model…</div>
+<div class="l"><span class="t">14:03:06</span> <span class="ok">✓</span> ch13 summary written · 4 pp · grounded ✓ · $0.10</div>
+<div class="l"><span class="t">14:03:07</span> <span class="in">→</span> ch14 “Wireless Security” · 3,020 words · sending to model…</div>
+<div class="l"><span class="t">14:03:19</span> <span class="wn">⚠</span> ch14 attempt 1 timed out (30s) · retrying (2/3)…</div>
+<div class="l"><span class="t">14:03:21</span> <span class="in">…</span> streaming response · 41%</div>
+        </div>
+      </div>
+
+      <div class="split" style="margin-top:16px">
+        <div class="panel">
+          <div class="section-title" style="margin:0 0 10px">Recovery — no silent failures</div>
+          <p style="color:var(--muted);margin:0 0 12px;font-size:13px">Each chapter is independent and checkpointed.
+            A failed chapter is retried up to 3×, then marked <b style="color:var(--warn)">failed</b> and skipped so the rest of the
+            book still completes. Nothing is lost; you can re-run only the failures.</p>
+          <div class="stat-row" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat"><div class="n ok">13</div><div class="l">Succeeded</div></div>
+            <div class="stat"><div class="n br">1</div><div class="l">In progress</div></div>
+            <div class="stat"><div class="n wn">0</div><div class="l">Failed</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="section-title" style="margin:0 0 10px">Queued next</div>
+          <div class="toc" style="margin:0">
+            <div class="row"><div class="num">15</div><div class="t"><b>Incident Response</b><small>2,640 words</small></div><span class="badge idle"><span class="dot"></span>Queued</span></div>
+            <div class="row"><div class="num">16</div><div class="t"><b>Risk Management</b><small>3,410 words</small></div><span class="badge idle"><span class="dot"></span>Queued</span></div>
+            <div class="row"><div class="num">17</div><div class="t"><b>Governance</b><small>2,900 words</small></div><span class="badge idle"><span class="dot"></span>Queued</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RESULTS ============ -->
+    <section id="results" class="view">
+      <div class="back" onclick="openBook()">← Back to CompTIA Network+ Guide</div>
+      <div class="tabs">
+        <button class="active" onclick="rtab('sum',this)">Summary</button>
+        <button onclick="rtab('key',this)">Key concepts</button>
+        <button onclick="rtab('cards',this)">Flashcards</button>
+      </div>
+
+      <div class="reader">
+        <div class="rhead">
+          <div>
+            <h2>Chapter 8 — TCP/IP Applications</h2>
+            <div style="color:var(--muted);font-size:12.5px">Network+ Guide · pp. 231–268 · 5-page summary</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <span class="grounded">✓ Grounded to source · 0 unsupported claims</span>
+            <button class="btn sm">Export PDF</button>
+            <button class="btn sm primary">Email to me</button>
+          </div>
+        </div>
+        <div class="rbody">
+          <div id="rsum">
+            <h3>Chapter Overview</h3>
+            <p>This chapter covers the transport and application layers of TCP/IP, focusing on how ports and
+              protocols map real-world services to the OSI model. It aligns to the N10-009 objectives on
+              ports, protocols, and traffic types — a high-yield exam area.</p>
+            <h3>Ports and Protocols You Must Memorize</h3>
+            <p>The exam expects rapid recall of common ports. Group them by function rather than memorizing a flat
+              list: file transfer (FTP 20/21, SFTP 22, TFTP 69), remote access (SSH 22, Telnet 23, RDP 3389),
+              mail (SMTP 25, POP3 110, IMAP4 143), and web (HTTP 80, HTTPS 443).</p>
+            <ul>
+              <li><b>Telnet vs SSH:</b> both give command-line remote access, but Telnet is cleartext; SSH encrypts the whole session and has effectively replaced it.</li>
+              <li><b>POP3 vs IMAP4:</b> POP3 downloads and typically removes mail; IMAP4 synchronizes across devices — the modern standard.</li>
+              <li><b>Active vs passive FTP:</b> passive FTP is NAT/firewall-friendly because the client always initiates the data connection.</li>
+            </ul>
+            <h3>Connection States &amp; Troubleshooting</h3>
+            <p>Use <code>netstat -ano</code> to inspect active connections. Recognize <b>LISTENING</b> (ready),
+              <b>ESTABLISHED</b> (active), and FIN-based closing states. Modern Linux uses <code>ss</code>; TCPView is
+              the Windows GUI alternative.</p>
+          </div>
+
+          <div id="rkey" style="display:none">
+            <h3>High-Yield Facts</h3>
+            <table class="keytable">
+              <tr><th>Protocol</th><th>Port</th><th>Transport</th><th>Note</th></tr>
+              <tr><td>SSH</td><td>22</td><td>TCP</td><td>Encrypted remote terminal</td></tr>
+              <tr><td>SMTP</td><td>25</td><td>TCP</td><td>Sends mail</td></tr>
+              <tr><td>DNS</td><td>53</td><td>UDP/TCP</td><td>Name resolution</td></tr>
+              <tr><td>HTTPS</td><td>443</td><td>TCP</td><td>HTTP over TLS</td></tr>
+              <tr><td>RDP</td><td>3389</td><td>TCP</td><td>Remote desktop</td></tr>
+            </table>
+            <p style="color:var(--muted);font-size:12.5px">Extracted deterministically and cross-checked against the source
+              text — every row cites a page in the chapter.</p>
+          </div>
+
+          <div id="rcards" style="display:none">
+            <h3>Generated flashcards · 12</h3>
+            <div class="delivery-item"><div class="di file">Q</div><div class="grow">
+              <b>Which port does IMAP4 use, and why prefer it over POP3?</b>
+              <small>A: 143 · IMAP4 synchronizes mail across devices with server-side folders.</small></div></div>
+            <div class="delivery-item"><div class="di file">Q</div><div class="grow">
+              <b>Telnet vs SSH — key security difference?</b>
+              <small>A: Telnet is cleartext; SSH encrypts the entire session.</small></div></div>
+            <div class="delivery-item"><div class="di file">Q</div><div class="grow">
+              <b>What does netstat state ESTABLISHED indicate?</b>
+              <small>A: An active, open TCP session.</small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DELIVERY ============ -->
+    <section id="delivery" class="view">
+      <div class="topbar"><div><h1>Delivery &amp; Outputs</h1>
+        <div class="sub">Review, export, or email your generated study material</div></div></div>
+
+      <div class="banner err">
+        <div class="bi">⚠</div>
+        <div>
+          <h4>Email delivery is currently failing — last 3 summaries saved locally instead</h4>
+          <p>SMTP connection to <code>smtp.gmail.com:587</code> failed TLS certificate verification
+            (<code>CERTIFICATE_VERIFY_FAILED</code>). This is the classic Windows cert-store / TLS-inspection issue —
+            not an app or password problem. Your summaries are safe in <code>unsent_summaries/</code>.
+            <a onclick="go('settings',document.querySelectorAll('.nav a')[3])">Fix in Settings → Email diagnostics ›</a></p>
+        </div>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat"><div class="n br">62</div><div class="l">Summaries ready</div></div>
+        <div class="stat"><div class="n ok">8</div><div class="l">Emailed OK</div></div>
+        <div class="stat"><div class="n wn">3</div><div class="l">Saved locally (email failed)</div></div>
+        <div class="stat"><div class="n">51</div><div class="l">In queue</div></div>
+      </div>
+
+      <div class="section-title">Recent delivery activity</div>
+      <div class="panel">
+        <div class="delivery-item">
+          <div class="di fail">✗</div>
+          <div class="grow"><b>Network+ · Ch 8 — TCP/IP Applications</b>
+            <small>Email failed (TLS) → saved to unsent_summaries/…/08_TCP_IP_Applications.pdf · 14:31</small></div>
+          <button class="btn sm">Open file</button><button class="btn sm primary">Retry email</button>
+        </div>
+        <div class="delivery-item">
+          <div class="di fail">✗</div>
+          <div class="grow"><b>Network+ · Ch 7 — Routing</b>
+            <small>Email failed (TLS) → saved locally · 14:30</small></div>
+          <button class="btn sm">Open file</button><button class="btn sm primary">Retry email</button>
+        </div>
+        <div class="delivery-item">
+          <div class="di mail">✓</div>
+          <div class="grow"><b>Network+ · Ch 6 — TCP/IP Basics</b>
+            <small>Emailed to keandre@example.com · 09:00 · scheduled daily run</small></div>
+          <button class="btn sm">Resend</button>
+        </div>
+        <div class="delivery-item">
+          <div class="di file">⇩</div>
+          <div class="grow"><b>Full book export — Network+ (21 chapters)</b>
+            <small>Bundled PDF · 84 pages · generated Aug 14</small></div>
+          <button class="btn sm">Download</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="settings" class="view">
+      <div class="topbar"><div><h1>Settings</h1>
+        <div class="sub">Email, delivery cadence, and API configuration</div></div></div>
+
+      <div class="split">
+        <div class="panel">
+          <div class="section-title" style="margin:0 0 14px">Email diagnostics</div>
+          <div class="banner warn" style="margin-bottom:14px">
+            <div class="bi">🔍</div>
+            <div><h4>Connection test — smtp.gmail.com:587</h4>
+              <p>Ran 3-step TLS probe (OS store → certifi bundle → no-verify).</p></div>
+          </div>
+          <div class="log" style="max-height:none">
+<div class="l"><span class="ok">✓</span> 1. Default OS cert store … <span class="er">FAILED</span></div>
+<div class="l"><span class="ok">✓</span> 2. certifi bundle … <span class="ok">SUCCESS</span></div>
+<div class="l"><span class="ok">✓</span> 3. No-verify probe … <span class="ok">SUCCESS</span></div>
+<div class="l" style="margin-top:8px"><span class="in">→</span> Diagnosis: OS cert store incomplete; certifi works.</div>
+<div class="l"><span class="in">→</span> Fix applied: send path now pins the certifi CA bundle.</div>
+          </div>
+          <button class="btn primary" style="margin-top:14px;width:100%;justify-content:center">Re-run test &amp; retry failed emails</button>
+        </div>
+
+        <div class="panel">
+          <div class="section-title" style="margin:0 0 14px">Delivery</div>
+          <div class="kv" style="margin:0">
+            <span class="k">Provider</span><span>Gmail SMTP (app password)</span>
+            <span class="k">From</span><span>keandre@example.com</span>
+            <span class="k">To</span><span>keandre@example.com</span>
+            <span class="k">Cadence</span><span>Daily · 09:00 · skip-safe queue</span>
+            <span class="k">On failure</span><span>Save to unsent_summaries/ + flag</span>
+            <span class="k">API model</span><span>claude-sonnet-5 · max 8k tokens</span>
+            <span class="k">Grounding check</span><span>Enabled (Agent 4)</span>
+          </div>
+          <div style="margin-top:16px;display:flex;gap:10px">
+            <button class="btn">Edit email</button>
+            <button class="btn">Change cadence</button>
+          </div>
+          <p style="color:var(--faint);font-size:12px;margin-top:14px">Secrets (API key, app password) are read from
+            environment variables and never stored in config or shown here.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  function go(id, el){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    if(el){document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));el.classList.add('active');}
+    window.scrollTo(0,0);
+  }
+  function openBook(){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('book').classList.add('active');
+    document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
+    document.querySelectorAll('.nav a')[0].classList.add('active');
+    window.scrollTo(0,0);
+  }
+  function rtab(which, el){
+    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    el.classList.add('active');
+    rsum.style.display = which==='sum'?'block':'none';
+    rkey.style.display = which==='key'?'block':'none';
+    rcards.style.display = which==='cards'?'block':'none';
+  }
+</script>
+</body>
+</html>

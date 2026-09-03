@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Languages — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><div class="mark">SF</div>
+      <div><b>StudyForge</b><small>languages</small></div></div>
+    <div style="display:flex;gap:10px">
+      <a class="btn" href="/">Library</a>
+      <a class="btn" href="/interview">Interview Prep</a>
+      <a class="btn" href="/settings">Settings</a>
+    </div>
+  </div>
+
+  {% if not ready.ai %}
+  <div class="banner warn"><div>⚠ AI provider not configured — <a href="/settings">add your API key</a> to build a path or run assessments.</div></div>
+  {% endif %}
+
+  <div class="top">
+    <div><h1>Learn a Language</h1><div class="sub">Build a personalized path around the materials, level, and goals you already have.</div></div>
+    <button class="btn primary" onclick="openWizard()">＋ Start a language</button>
+  </div>
+
+  {% if profiles %}
+  <div class="grid">
+    {% for p in profiles %}
+    <div class="card">
+      <div class="cover"><span class="type">{{ p.language }}</span></div>
+      <div class="body">
+        <h3><a href="/languages/{{ p.id }}" style="color:var(--text)">{{ p.language }}</a></h3>
+        <div class="auth">{{ p.goal or 'General study' }}</div>
+        {% if p.status=='active' %}<span class="badge ok"><span class="dot"></span>{{ p.est_level or 'Active' }}</span>
+        {% else %}<span class="badge idle"><span class="dot"></span>Intake</span>{% endif %}
+        <div style="margin-top:12px"><a class="btn sm" href="/languages/{{ p.id }}">Open dashboard</a></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><div class="empty">
+    <div class="big">🗣️</div>
+    <h3 style="color:var(--text)">No languages yet</h3>
+    <p>Start one in under a minute — StudyForge estimates your level, builds an adaptive path,
+      and can run practice speaking &amp; writing assessments.</p>
+  </div></div>
+  {% endif %}
+
+  <div id="wizard" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-head"><b>Start a language</b><span class="modal-close" onclick="closeWizard()">×</span></div>
+      <form id="wizardForm">
+        <div class="field-row"><label>Language *</label><input name="language" placeholder="e.g. Japanese, Spanish, Korean, German…" required></div>
+        <div class="field-row"><label>Goal</label>
+          <select name="goal">
+            <option>Conversational fluency</option><option>Travel</option>
+            <option>Professional / work</option><option>Academic study</option>
+            <option>Reading</option><option>Writing</option><option>Listening</option>
+            <option>Speaking</option><option>Exam prep (JLPT/TOPIK/DELE/etc.)</option>
+            <option>General fluency</option>
+          </select>
+        </div>
+        <div class="field-row"><label>Study frequency</label>
+          <select name="frequency"><option>Daily</option><option>A few times a week</option>
+            <option>Weekly</option><option>Occasional</option></select></div>
+        <div class="field-row"><label>Target date</label><input type="date" name="target_date"></div>
+        <div class="field-row"><label>Current level</label>
+          <select name="level_self"><option>Complete beginner</option><option>Beginner</option>
+            <option>Lower intermediate</option><option>Intermediate</option>
+            <option>Upper intermediate</option><option>Advanced</option></select></div>
+        <div class="settings-section" style="margin-top:10px">
+          <h3>Tell StudyForge about your ability (optional)</h3>
+          <textarea name="context" rows="4" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Courses/apps you've used, what you can/can't do yet, past test results, what you struggle with. You can add textbooks or photos of notes after this."></textarea>
+        </div>
+        <div id="wizardStatus" class="sub" style="margin:8px 0"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="btn" onclick="closeWizard()">Cancel</button>
+          <button type="submit" class="btn primary" id="wizardSubmit">Create my dashboard</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+function openWizard(){ document.getElementById('wizard').style.display='flex'; }
+function closeWizard(){ document.getElementById('wizard').style.display='none'; }
+document.getElementById('wizardForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('wizardSubmit'); btn.disabled = true;
+  document.getElementById('wizardStatus').textContent = 'Creating…';
+  try{
+    const r = await fetch('/languages/create', {method:'POST', body:new FormData(e.target)});
+    const j = await r.json();
+    if(j.status==='added'){ location.href='/languages/'+j.profile_id; }
+    else { document.getElementById('wizardStatus').textContent = j.message; btn.disabled=false; }
+  }catch(err){ document.getElementById('wizardStatus').textContent='Failed: '+err; btn.disabled=false; }
+});
+</script>
+</body>
+</html>

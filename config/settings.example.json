@@ -1,0 +1,12 @@
+{
+  "model": "claude-sonnet-5",
+  "max_tokens": 8000,
+  "max_retries": 3,
+  "email_backend": "smtp",
+  "smtp_server": "smtp.gmail.com",
+  "smtp_port": 587,
+  "email_address": "you@gmail.com",
+  "to_email": "you@gmail.com",
+  "advance_queue_on_email_failure": false,
+  "grounding_check": true
+}

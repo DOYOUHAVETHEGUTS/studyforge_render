@@ -1,0 +1,29 @@
+# Render Blueprint — provisions StudyForge with one command ("New + > Blueprint").
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: studyforge
+    runtime: docker
+    plan: starter            # ~$7/mo; needed for a persistent disk. Use "free" to trial
+                             # WITHOUT a disk (data resets on restart) — see note below.
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /login  # always returns 200 whether or not auth is enabled
+    envVars:
+      # Secrets: set the VALUES in the Render dashboard, not here. sync:false keeps
+      # them out of the repo and prompts you for them at deploy time.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STUDYFORGE_ACCESS_PASSWORD
+        sync: false
+      # Optional email delivery (leave unset to skip):
+      - key: STUDYFORGE_EMAIL_APP_PASSWORD
+        sync: false
+      # Persistent-disk mount point (matches the disk below and the Dockerfile).
+      - key: STUDYFORGE_DATA_DIR
+        value: /data
+      - key: STUDYFORGE_CONFIG_DIR
+        value: /data/config
+    disk:
+      name: studyforge-data
+      mountPath: /data
+      sizeGB: 1
