@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interview Prep — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <div class="mark">SF</div>
+      <div><b>StudyForge</b><small>interview prep</small></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <a class="btn" href="/">Library</a>
+      <a class="btn" href="/settings">Settings</a>
+    </div>
+  </div>
+
+  {% if not ready.ai %}
+  <div class="banner warn"><div>⚠ AI provider not configured — <a href="/settings">add your API key</a> before generating.</div></div>
+  {% endif %}
+
+  <div class="top">
+    <div><h1>Interview Prep</h1><div class="sub">{{ preps|length }} prep doc(s)</div></div>
+    <button class="btn primary" onclick="openCreate()">＋ New prep</button>
+  </div>
+
+  {% if preps %}
+  <div class="grid">
+    {% for p in preps %}
+    <div class="card">
+      <div class="cover paper"><span class="type">Interview</span></div>
+      <div class="body">
+        <h3><a href="/interview/{{ p.id }}" style="color:var(--text)">{{ p.role_title }}</a></h3>
+        <div class="auth">{{ p.company or '—' }}</div>
+        {% if p.status=='generated' %}<span class="badge ok"><span class="dot"></span>Ready</span>
+        {% elif p.status=='generating' %}<span class="badge run"><span class="dot"></span>Generating…</span>
+        {% elif p.status=='failed' %}<span class="badge err"><span class="dot"></span>Failed</span>
+        {% else %}<span class="badge idle"><span class="dot"></span>Not generated</span>{% endif %}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <a class="btn sm" href="/interview/{{ p.id }}">Open</a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><div class="empty">
+    <div class="big">🎯</div>
+    <h3 style="color:var(--text)">No interview preps yet</h3>
+    <p>Create one from a job posting plus your résumé and notes — StudyForge maps your
+      experience to what the role tests, drafts likely questions, and builds a rehearsal deck.</p>
+  </div></div>
+  {% endif %}
+
+  <!-- create modal -->
+  <div id="createModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-head"><b>New interview prep</b><span class="modal-close" onclick="closeCreate()">×</span></div>
+      <form id="createForm">
+        <div class="field-row"><label>Role title *</label><input name="role_title" placeholder="e.g. Sr Analyst, Alliances Analytics" required></div>
+        <div class="field-row"><label>Company</label><input name="company" placeholder="e.g. American Airlines"></div>
+
+        <div class="settings-section" style="margin-top:10px">
+          <h3>Job posting *</h3>
+          <textarea name="job_posting_text" rows="4" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Paste the job posting text here…"></textarea>
+          <div class="sub" style="margin:6px 0">…or upload a file (.pdf/.docx/.txt/.md):</div>
+          <input type="file" name="job_file" accept=".pdf,.docx,.txt,.md">
+        </div>
+
+        <div class="settings-section">
+          <h3>Your résumé</h3>
+          <textarea name="resume_text" rows="4" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Paste your résumé text…"></textarea>
+          <div class="sub" style="margin:6px 0">…or upload a file:</div>
+          <input type="file" name="resume_file" accept=".pdf,.docx,.txt,.md">
+        </div>
+
+        <div class="settings-section">
+          <h3>Notes (optional)</h3>
+          <textarea name="notes" rows="3" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Anything else — interview format, who's on the panel, stories you want to emphasize…"></textarea>
+        </div>
+
+        <div id="createStatus" class="sub" style="margin:8px 0"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="btn" onclick="closeCreate()">Cancel</button>
+          <button type="submit" class="btn primary" id="createSubmit">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openCreate(){ document.getElementById('createModal').style.display='flex'; }
+function closeCreate(){ document.getElementById('createModal').style.display='none'; }
+document.getElementById('createForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = document.getElementById('createStatus');
+  const btn = document.getElementById('createSubmit');
+  btn.disabled = true;
+  status.textContent = 'Creating and extracting text…';
+  try{
+    const r = await fetch('/interview/create', {method:'POST', body: new FormData(e.target)});
+    const j = await r.json();
+    if(j.status === 'added'){ location.href = '/interview/' + j.interview_id; }
+    else { status.textContent = j.message || 'Could not create.'; btn.disabled = false; }
+  }catch(err){ status.textContent = 'Failed: ' + err; btn.disabled = false; }
+});
+</script>
+</body>
+</html>

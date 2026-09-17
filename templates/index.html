@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyForge — Library</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <div class="mark">SF</div>
+      <div><b>StudyForge</b><small>study material engine · v2</small></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      {% if display_name %}<span class="sub" style="align-self:center">Hi, {{ display_name }}</span>{% endif %}
+      <a class="btn" href="/languages">Languages</a>
+      <a class="btn" href="/interview">Interview Prep</a>
+      <a class="btn" href="/settings">Settings</a>
+      <a class="btn" href="/prototype" target="_blank">Design prototype ↗</a>
+    </div>
+  </div>
+
+  {% if not ready.all_ready %}
+  <div class="banner warn">
+    <div>
+      <b>Action required</b>
+      <div class="sub" style="margin-top:4px">
+        {% if not ready.ai %}⚠ AI provider not configured — <a href="/settings">open Settings to add your API key</a>.<br>{% endif %}
+        {% if not ready.email %}⚠ Email not configured — summaries will save locally instead of sending. <a href="/settings">Configure email</a>.{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="top">
+    <div><h1>Library</h1><div class="sub">{{ materials|length }} material(s)</div></div>
+    <button class="btn primary" onclick="openUpload()">＋ Add Material</button>
+  </div>
+
+  {% if materials %}
+  <div class="grid">
+    {% for m in materials %}
+    {% set s = m.stats %}
+    <div class="card">
+      <div class="cover {{ m.material_type }}"><span class="type">{{ m.material_type }}</span></div>
+      <div class="body">
+        <h3><a href="/book/{{ m.id }}" style="color:var(--text)">{{ m.name }}</a></h3>
+        <div class="auth">{{ m.exam_name or m.source_ref or '—' }}</div>
+
+        {% if s.total == 0 %}
+          <span class="badge idle"><span class="dot"></span>No sections</span>
+        {% elif s.failed > 0 %}
+          <span class="badge warn"><span class="dot"></span>{{ s.failed }} failed</span>
+        {% elif s.done == s.total %}
+          <span class="badge ok"><span class="dot"></span>Complete</span>
+        {% elif s.done > 0 %}
+          <span class="badge run"><span class="dot"></span>{{ s.done }}/{{ s.total }} done</span>
+        {% else %}
+          <span class="badge idle"><span class="dot"></span>Not processed</span>
+        {% endif %}
+
+        <div class="pl"><i class="{{ 'ok' if s.done==s.total and s.total>0 else ('warn' if s.failed else '') }}"
+             style="width:{{ (100*s.done/s.total)|round(0,'floor') if s.total else 0 }}%"></i></div>
+        <div class="meta"><span>{{ s.done }}/{{ s.total }} sections</span><b>{{ s.sent }} sent</b></div>
+        {% if s.avg_quiz_score is not none %}
+        <div class="meta"><span>Quiz avg</span><b class="{{ 'check' if s.avg_quiz_score>=0.7 else 'cross' }}">{{ (100*s.avg_quiz_score)|round(0) }}%</b></div>
+        {% endif %}
+
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <a class="btn sm" href="/book/{{ m.id }}">Open</a>
+          <button class="btn sm primary" onclick="proc('{{ m.id }}')">Process</button>
+          <form method="post" action="/active/{{ m.id }}" style="margin:0">
+            <button class="btn sm" {{ 'disabled' if m.active }}>{{ 'Active' if m.active else 'Set active' }}</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><div class="empty">
+    <div class="big">📚</div>
+    <h3 style="color:var(--text)">No materials yet</h3>
+    <p>Click <b>Add Material</b> above to upload a textbook, paper, or workbook (.pdf, .docx, .txt, .md).</p>
+  </div></div>
+  {% endif %}
+
+  <!-- Add Material modal -->
+  <div id="uploadModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-head"><b>Add Material</b><span class="modal-close" onclick="closeUpload()">×</span></div>
+      <form id="uploadForm">
+        <div class="drop" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <div id="dropText">Drag a file here, or click to choose<br><small>{{ supported_types }}</small></div>
+          <div id="filePreview" style="display:none"></div>
+        </div>
+        <input type="file" id="fileInput" name="file" style="display:none" accept=".pdf,.docx,.txt,.md">
+        <div class="field-row"><label>Name</label><input name="name" id="nameInput" placeholder="Auto-filled from filename"></div>
+        <div class="field-row"><label>Type</label>
+          <select name="material_type">
+            <option value="">Auto-detect</option>
+            <option value="textbook">Textbook</option>
+            <option value="language">Language learning</option>
+            <option value="paper">Research paper</option>
+            <option value="narrative">Narrative / fiction</option>
+            <option value="reference">Reference</option>
+          </select>
+        </div>
+        <div class="field-row"><label>Exam (optional)</label><input name="exam_name" placeholder="e.g. CompTIA Network+ N10-008"></div>
+        <div class="field-row"><label>Focus (optional)</label><input name="focus" placeholder="Topic to emphasize"></div>
+        <div id="uploadStatus" class="sub" style="margin:8px 0"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="btn" onclick="closeUpload()">Cancel</button>
+          <button type="submit" class="btn primary" id="uploadSubmit">Upload &amp; Add</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+async function proc(id){
+  const r = await fetch('/process/'+id, {method:'POST'});
+  const j = await r.json();
+  if(j.status === 'started'){
+    location.href = '/book/' + id;
+  } else if(j.status === 'error'){
+    alert(j.message);
+  } else {
+    alert('Status: ' + j.status);
+  }
+}
+function openUpload(){ document.getElementById('uploadModal').style.display='flex'; }
+function closeUpload(){ document.getElementById('uploadModal').style.display='none'; }
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', () => {
+  const f = fileInput.files[0];
+  if(!f) return;
+  document.getElementById('dropText').style.display='none';
+  const fp = document.getElementById('filePreview');
+  fp.style.display='block';
+  fp.textContent = '📄 ' + f.name + '  (' + (f.size/1024).toFixed(0) + ' KB)';
+  if(!document.getElementById('nameInput').value){
+    document.getElementById('nameInput').value = f.name.replace(/\.[^/.]+$/, '');
+  }
+});
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = document.getElementById('uploadStatus');
+  if(!fileInput.files[0]){ status.textContent = 'Choose a file first.'; return; }
+  const btn = document.getElementById('uploadSubmit');
+  btn.disabled = true;
+  status.textContent = 'Uploading and extracting text…';
+  const fd = new FormData(e.target);
+  try{
+    const r = await fetch('/upload', {method:'POST', body: fd});
+    const j = await r.json();
+    if(j.status === 'added'){
+      status.textContent = 'Added! Redirecting…';
+      location.href = '/book/' + j.material_id;
+    } else {
+      status.textContent = 'The file could not be added: ' + (j.message || 'unknown error');
+      btn.disabled = false;
+    }
+  } catch(err){
+    status.textContent = 'Upload failed: ' + err;
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

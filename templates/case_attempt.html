@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ c.title }} — Live Run</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/case/{{ c.id }}">← {{ c.title }}</a>
+
+  <div class="top">
+    <div><h1>{{ c.title }}</h1><div class="sub">{{ a.duration_minutes ~ '-minute timed run' if a.duration_minutes else 'Untimed practice' }}</div></div>
+    {% if a.duration_minutes and a.status == 'in_progress' %}
+    <div id="timerBox" class="badge idle" style="font-size:16px;padding:8px 16px"><span class="dot"></span><span id="timerText">--:--</span></div>
+    {% endif %}
+  </div>
+
+  {% if a.status == 'scored' %}
+  <!-- ============ SCORED RESULTS ============ -->
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Overall</h3>
+      <div class="stat-row" style="grid-template-columns:repeat(2,1fr)">
+        <div class="stat"><div class="n {{ 'ok' if a.score_percent and a.score_percent>=70 else 'wn' }}">{{ a.score_percent|round(0) if a.score_percent is not none else '—' }}%</div><div class="l">Practice score</div></div>
+        <div class="stat"><div class="n">{{ feedback|length }}</div><div class="l">Questions reviewed</div></div>
+      </div>
+      {% if a.overall_summary %}<p style="margin-top:12px">{{ a.overall_summary }}</p>{% endif %}
+      <div class="sub">AI-generated practice feedback — not an official interview outcome.</div>
+    </div>
+  </div>
+
+  {% if gaps %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Possible experience gaps</h3>
+      <p class="sub">Based on your résumé compared to what this role and case seem to require:</p>
+      <ul>{% for g in gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+    </div>
+  </div>
+  {% endif %}
+
+  {% for fb in feedback %}
+  {% set q = questions|selectattr('id','equalto',fb.question_id)|first %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <h3 style="margin:0">{{ q.question if q else fb.question_id }}</h3>
+        {% if fb.verdict=='correct' %}<span class="badge ok"><span class="dot"></span>✓ Correct</span>
+        {% elif fb.verdict=='partial' %}<span class="badge warn"><span class="dot"></span>Partial</span>
+        {% else %}<span class="badge err"><span class="dot"></span>Needs work</span>{% endif %}
+      </div>
+      {% if fb.matched_approach %}<div class="sub" style="margin-top:6px">Matched approach: {{ fb.matched_approach }}</div>{% endif %}
+      {% if fb.matched_points %}<p><b>What satisfied the answer:</b></p><ul>{% for m in fb.matched_points %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+      {% if fb.missing_points %}<p><b>What was missing:</b></p><ul>{% for m in fb.missing_points %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+      <p>{{ fb.feedback }}</p>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% else %}
+  <!-- ============ TAKING THE ASSESSMENT ============ -->
+  <div class="panel" id="timeUpBanner" style="display:none">
+    <div class="banner warn">
+      <div><b>Time's up</b> — your answers are still here. Keep going, or submit as-is.</div>
+    </div>
+  </div>
+
+  {% for q in questions %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Question {{ loop.index }}</h3>
+      <p>{{ q.question }}</p>
+      <textarea id="ans_{{ q.id }}" rows="5" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px" placeholder="Your answer…"></textarea>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="panel" id="submitPanel" style="{{ '' if job and job.running else '' }}">
+    <button class="btn primary" id="submitBtn" onclick="submitAttempt()">Submit for feedback</button>
+    <span class="sub" id="submitStatus" style="margin-left:12px"></span>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+const AID = "{{ a.id }}";
+const QIDS = {{ questions|map(attribute='id')|list|tojson }};
+
+// --- timer (soft stop: stop counting, keep work, let them choose) ---
+{% if a.duration_minutes and a.status == 'in_progress' %}
+const totalSeconds = {{ a.duration_minutes }} * 60;
+const startedAt = new Date("{{ a.started_at }}Z".replace(' ', 'T')).getTime() || Date.now();
+let timerInterval;
+function tick(){
+  const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+  const remaining = totalSeconds - elapsed;
+  if(remaining <= 0){
+    clearInterval(timerInterval);
+    document.getElementById('timerText').textContent = "0:00";
+    document.getElementById('timerBox').classList.remove('idle');
+    document.getElementById('timerBox').classList.add('warn');
+    document.getElementById('timeUpBanner').style.display = 'block';
+    // Soft stop: nothing is disabled, nothing is auto-submitted — the person's work stays
+    // right where it is and they choose "keep going" (just keep typing) or submit now.
+    return;
+  }
+  const m = Math.floor(remaining/60), s = remaining%60;
+  document.getElementById('timerText').textContent = m+':'+String(s).padStart(2,'0');
+}
+tick(); timerInterval = setInterval(tick, 1000);
+{% endif %}
+
+async function submitAttempt(){
+  const responses = QIDS.map(qid => ({question_id: qid, answer: (document.getElementById('ans_'+qid).value||'').trim()}));
+  const btn = document.getElementById('submitBtn'); btn.disabled = true;
+  document.getElementById('submitStatus').textContent = 'Scoring… this can take a moment.';
+  try{
+    const r = await fetch('/case/attempt/'+AID+'/submit', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({responses})});
+    const j = await r.json();
+    if(j.status !== 'started'){ document.getElementById('submitStatus').textContent = j.message; btn.disabled=false; return; }
+    pollScore();
+  }catch(err){ document.getElementById('submitStatus').textContent = 'Failed: '+err; btn.disabled=false; }
+}
+async function pollScore(){
+  const r = await fetch('/api/case-attempt/'+AID);
+  const j = await r.json();
+  const running = j.job && j.job.running;
+  if(j.job){ document.getElementById('submitStatus').textContent = (j.job.log||[]).join(' · ') || 'Scoring…'; }
+  if(running){ setTimeout(pollScore, 1500); } else { setTimeout(()=>location.reload(), 600); }
+}
+{% if job and job.running %}pollScore();{% endif %}
+</script>
+</body>
+</html>

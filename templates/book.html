@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ m.name }} — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← Library</a>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+      <div>
+        <h1>{{ m.name }}</h1>
+        <div class="sub">{{ m.exam_name or m.source_ref or '' }}</div>
+      </div>
+      {% if stats.failed %}<span class="badge warn"><span class="dot"></span>{{ stats.failed }} failed</span>
+      {% elif stats.total and stats.done==stats.total %}<span class="badge ok"><span class="dot"></span>Complete</span>
+      {% else %}<span class="badge idle"><span class="dot"></span>{{ stats.done }}/{{ stats.total }} done</span>{% endif %}
+    </div>
+    <div class="kv" style="margin-top:14px">
+      <span class="k">Type</span><span>{{ m.material_type }}</span>
+      <span class="k">Source</span><span>{{ m.source_ref or m.source_path or '—' }}</span>
+      <span class="k">Sections</span><span>{{ stats.total }}</span>
+      <span class="k">Delivered</span><span>{{ stats.sent }} emailed · {{ stats.local }} saved locally</span>
+    </div>
+    <div style="display:flex;gap:9px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn primary" onclick="proc(false)">Process all</button>
+      {% if stats.failed %}<button class="btn" onclick="proc(true)">Re-run failed only</button>{% endif %}
+      <button class="btn" onclick="send()">Send next to inbox</button>
+      <form method="post" action="/delete/{{ m.id }}" style="margin:0"
+            onsubmit="return confirm('Delete this material?')">
+        <button class="btn danger">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>{% if m.exam_name %}Progress toward {{ m.exam_name }}{% else %}Study progress{% endif %}</h3>
+      <div class="stat-row">
+        <div class="stat"><div class="n br">{{ (100*stats.done/stats.total)|round(0,'floor') if stats.total else 0 }}%</div><div class="l">Sections read</div></div>
+        <div class="stat"><div class="n">{{ stats.done }}/{{ stats.total }}</div><div class="l">Sections complete</div></div>
+        <div class="stat"><div class="n {{ 'ok' if stats.avg_quiz_score and stats.avg_quiz_score>=0.7 else 'wn' if stats.avg_quiz_score else '' }}">
+          {{ (100*stats.avg_quiz_score)|round(0) ~ '%' if stats.avg_quiz_score is not none else '—' }}</div><div class="l">Avg quiz score</div></div>
+        <div class="stat"><div class="n">{{ stats.quiz_attempted }}/{{ stats.total }}</div><div class="l">Sections quizzed</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b>Sections</b><span class="sub" id="jobstate"></span>
+    </div>
+    <div class="toc" id="toc">
+      {% for s in sections %}
+      <div class="row">
+        <div class="num">{{ s.ordinal }}</div>
+        <div class="t">
+          {% if s.status=='generated' and s.summary_pdf %}
+          <a href="/section/{{ s.id }}/pdf" target="_blank" style="color:var(--text)"><b>{{ s.title }}</b></a>
+          {% else %}
+          <b>{{ s.title }}</b>
+          {% endif %}
+          {% if s.has_learning %}<a href="/section/{{ s.id }}/study" class="chip" style="margin-left:8px;text-decoration:none">🗂️ Study</a>{% endif %}
+          <small>
+            {% if s.start_page %}pp. {{ s.start_page }}–{{ s.end_page }}{% endif %}
+            {% if s.status=='generated' and not s.grounded %} · ⚠ ungrounded claims{% endif %}
+            {% if s.status=='generated' and not s.summary_pdf %} · no PDF (Markdown-only output){% endif %}
+            {% if s.quiz_attempts %} · quiz best {{ (100*s.quiz_best_score)|round(0) }}%{% endif %}
+            {% if s.error %} · {{ s.error }}{% endif %}
+          </small></div>
+        {% if s.status=='generated' %}<span class="badge ok"><span class="dot"></span>Done</span>
+        {% elif s.status=='failed' %}<span class="badge err"><span class="dot"></span>Failed</span>
+        {% elif s.status=='summarizing' %}<span class="badge run"><span class="dot"></span>Working</span>
+        {% else %}<span class="badge idle"><span class="dot"></span>Pending</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <b>Live log</b>
+    <div class="log" id="log" style="margin-top:10px">Idle. Click “Process all” to start a run.</div>
+  </div>
+</div>
+
+<script>
+const MID = "{{ m.id }}";
+async function proc(failedOnly){
+  const r = await fetch('/process/'+MID+(failedOnly?'?failed_only=true':''), {method:'POST'});
+  const j = await r.json();
+  if(j.status!=='started'){ document.getElementById('jobstate').textContent = 'status: '+j.status; }
+  poll();
+}
+async function send(){
+  const r = await fetch('/send/'+MID, {method:'POST'});
+  const j = await r.json();
+  alert('Delivery: '+j.status + (j.reason? ' — '+j.reason : ''));
+  setTimeout(()=>location.reload(), 400);
+}
+async function poll(){
+  const r = await fetch('/api/material/'+MID);
+  const j = await r.json();
+  if(j.job){
+    document.getElementById('log').textContent = (j.job.log||[]).join('\n') || 'Starting…';
+    document.getElementById('jobstate').textContent = j.job.running ? 'running…' : 'finished';
+  }
+  const running = j.job && j.job.running;
+  if(running){ setTimeout(poll, 1500); } else { setTimeout(()=>location.reload(), 800); }
+}
+{% if job and job.running %}poll();{% endif %}
+</script>
+</body>
+</html>
