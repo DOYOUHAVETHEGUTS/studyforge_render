@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ p.language }} — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/languages">← Languages</a>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+      <div>
+        <h1>{{ p.language }}</h1>
+        <div class="sub">{{ p.goal }}{% if p.frequency %} · {{ p.frequency }}{% endif %}{% if p.target_date %} · target {{ p.target_date }}{% endif %}</div>
+      </div>
+      <div style="text-align:right">
+        {% if p.est_level %}<div class="badge ok"><span class="dot"></span>{{ p.est_level }}</div>
+        <div class="sub" style="margin-top:4px">StudyForge estimate — not an official {{ p.framework or 'exam' }} result</div>
+        {% else %}<div class="badge idle"><span class="dot"></span>Not yet diagnosed</div>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:9px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn primary" onclick="diagnose()">{{ 'Re-run diagnostic &amp; path' if p.status=='active' else 'Run diagnostic &amp; build path' }}</button>
+      {% if p.status=='active' %}<a class="btn" href="/languages/{{ p.id }}/plan.pdf" target="_blank">Export plan PDF</a>{% endif %}
+      <form method="post" action="/languages/{{ p.id }}/delete" style="margin:0" onsubmit="return confirm('Delete this language and all its data?')"><button class="btn danger">Delete</button></form>
+    </div>
+  </div>
+
+  <div class="panel" id="logPanel" style="{{ '' if job and job.running else 'display:none' }}">
+    <b>Working…</b><div class="log" id="log" style="margin-top:10px">Starting…</div>
+  </div>
+
+  {% if diag.skills %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0"><h3>Skill estimates</h3>
+      <div class="stat-row" style="grid-template-columns:repeat(3,1fr)">
+        {% for skill, val in diag.skills.items() %}
+        <div class="stat"><div class="n br">{{ val }}</div><div class="l">{{ skill|title }}</div></div>
+        {% endfor %}
+      </div>
+      {% if diag.rationale %}<div class="sub" style="margin-top:12px">{{ diag.rationale }}</div>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="split">
+    <div>
+      {% if path.immediate_priorities %}
+      <div class="panel"><div class="settings-section" style="margin-bottom:0">
+        <h3>Immediate priorities</h3>
+        <ul>{% for pr in path.immediate_priorities %}<li>{{ pr }}</li>{% endfor %}</ul>
+      </div></div>
+      {% endif %}
+      {% if path.current_unit %}
+      <div class="panel"><div class="settings-section" style="margin-bottom:0">
+        <h3>Current unit: {{ path.current_unit.title }}</h3>
+        <div class="toc">
+          {% for c in path.current_unit.concepts %}
+          <div class="row"><div class="t"><b>{{ c.concept }}</b><small>{{ c.category }}</small></div></div>
+          {% endfor %}
+        </div>
+      </div></div>
+      {% endif %}
+      {% if path.weekly_plan %}
+      <div class="panel"><div class="settings-section" style="margin-bottom:0">
+        <h3>Weekly plan</h3><ul>{% for w in path.weekly_plan %}<li>{{ w }}</li>{% endfor %}</ul>
+      </div></div>
+      {% endif %}
+    </div>
+
+    <div>
+      <div class="panel"><div class="settings-section" style="margin-bottom:0">
+        <h3>Review queue</h3>
+        {% set due = concepts|selectattr('status','ne','mastered')|list %}
+        {% if due %}
+        <div class="toc">
+          {% for c in due[:8] %}
+          <div class="row"><div class="t"><b>{{ c.concept }}</b>
+            <small>{{ c.category }} · {{ c.status }}{% if c.attempts %} · {{ (100*c.confidence)|round(0) }}%{% endif %}</small></div></div>
+          {% endfor %}
+        </div>
+        {% else %}<div class="sub">Nothing due yet — run the diagnostic to seed your learner model.</div>{% endif %}
+      </div></div>
+
+      <div class="panel"><div class="settings-section" style="margin-bottom:0">
+        <h3>Assessments</h3>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn sm primary" onclick="newAssessment('speaking')">＋ Speaking</button>
+          <button class="btn sm" onclick="newAssessment('writing')">＋ Writing</button>
+        </div>
+        {% if assessments %}
+        <div class="toc">
+          {% for a in assessments %}
+          <div class="row"><div class="t">
+            <a href="/languages/assessment/{{ a.id }}" style="color:var(--text)"><b>{{ a.kind|title }}</b></a>
+            <small>{{ a.created_at[:10] }}{% if a.score_overall is not none %} · overall {{ a.score_overall }}/9{% endif %}</small>
+          </div>
+          {% if a.status=='scored' %}<span class="badge ok"><span class="dot"></span>Scored</span>
+          {% else %}<span class="badge idle"><span class="dot"></span>{{ a.status }}</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}<div class="sub">No assessments yet.</div>{% endif %}
+      </div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Materials</h3>
+      <p class="sub">A textbook tells StudyForge what <em>can</em> be taught. Upload a digital
+        textbook (.pdf/.docx/.txt/.md) or photos of your notes (.png/.jpg) — photos are read with
+        image understanding and flagged for your review if handwriting is unclear.</p>
+      <form id="matForm" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0">
+        <select name="kind" style="background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 10px">
+          <option value="textbook">Textbook / ebook</option>
+          <option value="notes_photo">Photo of notes</option>
+          <option value="syllabus">Syllabus</option>
+          <option value="other">Other</option>
+        </select>
+        <input type="file" name="file" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp" required>
+        <button type="submit" class="btn sm primary">Upload &amp; analyze</button>
+        <span class="sub" id="matStatus"></span>
+      </form>
+      {% if materials %}
+      <div class="toc">
+        {% for m in materials %}
+        <div class="row"><div class="t"><b>{{ m.name }}</b>
+          <small>{{ m.kind }} · {{ m.status }}{% if m.needs_review %} · ⚠ needs review{% endif %}{% if m.error %} · {{ m.error }}{% endif %}</small></div>
+          {% if m.status=='analyzed' %}<span class="badge ok"><span class="dot"></span>Analyzed</span>
+          {% elif m.status=='failed' %}<span class="badge err"><span class="dot"></span>Failed</span>
+          {% else %}<span class="badge run"><span class="dot"></span>Analyzing…</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+const PID = "{{ p.id }}";
+async function diagnose(){
+  const r = await fetch('/languages/'+PID+'/diagnose', {method:'POST'});
+  const j = await r.json();
+  if(j.status==='error'){ alert(j.message); return; }
+  document.getElementById('logPanel').style.display='block';
+  poll();
+}
+async function poll(){
+  const r = await fetch('/api/language/'+PID);
+  const j = await r.json();
+  if(j.job){ document.getElementById('log').textContent=(j.job.log||[]).join('\n')||'Starting…'; }
+  const running = j.job && j.job.running;
+  if(running){ setTimeout(poll,1500); } else { setTimeout(()=>location.reload(),800); }
+}
+{% if job and job.running %}poll();{% endif %}
+
+async function newAssessment(kind){
+  const r = await fetch('/languages/'+PID+'/assessment/'+kind, {method:'POST'});
+  const j = await r.json();
+  if(j.status==='created'){ location.href='/languages/assessment/'+j.assessment_id; }
+  else { alert(j.message || 'Could not create assessment.'); }
+}
+
+document.getElementById('matForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  document.getElementById('matStatus').textContent = 'Uploading…';
+  try{
+    const r = await fetch('/languages/'+PID+'/material', {method:'POST', body:new FormData(e.target)});
+    const j = await r.json();
+    if(j.status==='added'){ document.getElementById('matStatus').textContent =
+        j.analyzing ? 'Analyzing…' : 'Uploaded.'; setTimeout(()=>location.reload(), 1500); }
+    else { document.getElementById('matStatus').textContent = j.message; }
+  }catch(err){ document.getElementById('matStatus').textContent = 'Failed: '+err; }
+});
+</script>
+</body>
+</html>

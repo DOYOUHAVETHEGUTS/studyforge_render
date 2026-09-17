@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ a.kind|title }} Assessment — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/languages/{{ p.id }}">← {{ p.language }} dashboard</a>
+  <div class="top">
+    <div><h1>{{ a.kind|title }} Assessment</h1>
+      <div class="sub">{{ p.language }} · {{ prompts|length }} prompts · <b>StudyForge Practice Score</b> (not an official exam result)</div></div>
+  </div>
+
+  {% if a.status == 'scored' %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Practice assessment</h3>
+      <div class="stat-row" style="grid-template-columns:repeat(5,1fr)">
+        <div class="stat"><div class="n br">{{ a.score_fluency if a.score_fluency is not none else '—' }}</div><div class="l">Fluency &amp; Coherence</div></div>
+        <div class="stat"><div class="n br">{{ a.score_lexical if a.score_lexical is not none else '—' }}</div><div class="l">Lexical Resource</div></div>
+        <div class="stat"><div class="n br">{{ a.score_grammar if a.score_grammar is not none else '—' }}</div><div class="l">Grammar</div></div>
+        <div class="stat"><div class="n {{ 'br' if a.score_pronunciation is not none else '' }}">{{ a.score_pronunciation if a.score_pronunciation is not none else 'n/a' }}</div><div class="l">Pronunciation</div></div>
+        <div class="stat"><div class="n ok">{{ a.score_overall if a.score_overall is not none else '—' }}</div><div class="l">Overall estimate</div></div>
+      </div>
+      {% if not a.audio_based %}<div class="sub" style="margin-top:10px">⚠ Scored from your transcripts only — pronunciation was not judged. Record audio and include what you actually said for a fuller estimate.</div>{% endif %}
+    </div>
+  </div>
+
+  {% if recurring %}
+  <div class="panel"><div class="settings-section" style="margin-bottom:0">
+    <h3>Recurring errors to work on</h3>
+    <ul>{% for e in recurring %}<li>{{ e }}</li>{% endfor %}</ul>
+    <div class="sub">These were added to your review queue.</div>
+  </div></div>
+  {% endif %}
+
+  {% for fb in feedback %}
+  <div class="panel"><div class="settings-section" style="margin-bottom:0">
+    <h3>Prompt {{ loop.index }}</h3>
+    {% if fb.strengths %}<p><b>What you did well:</b> {{ fb.strengths }}</p>{% endif %}
+    {% if fb.corrections %}<p><b>Corrections:</b></p><ul>{% for c in fb.corrections %}<li>{{ c }}</li>{% endfor %}</ul>{% endif %}
+    {% if fb.better_way %}<p><b>Better way to say it:</b> {{ fb.better_way }}</p>{% endif %}
+    {% if fb.one_thing %}<p><b>One thing to improve next:</b> {{ fb.one_thing }}</p>{% endif %}
+  </div></div>
+  {% endfor %}
+
+  {% else %}
+  <!-- taking the assessment -->
+  <div class="panel">
+    <p class="sub">For each prompt: {% if a.kind=='speaking' %}record your answer (or upload audio), then type what you said so it can be scored. Pronunciation is only estimated when you tell us your response was spoken.{% else %}write your response.{% endif %}</p>
+  </div>
+
+  {% for pr in prompts %}
+  <div class="panel" data-idx="{{ loop.index0 }}">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Prompt {{ loop.index }} of {{ prompts|length }} <span class="chip">{{ pr.type }}</span></h3>
+      <p>{{ pr.prompt }}</p>
+      {% if a.kind=='speaking' %}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0">
+        <button type="button" class="btn sm" onclick="rec({{ loop.index0 }})" id="recBtn{{ loop.index0 }}">● Record</button>
+        <button type="button" class="btn sm" onclick="stopRec({{ loop.index0 }})" id="stopBtn{{ loop.index0 }}" disabled>■ Stop</button>
+        <audio id="audio{{ loop.index0 }}" controls style="display:none;height:34px"></audio>
+        <span class="sub">or upload:</span>
+        <input type="file" accept="audio/*" onchange="uploadAudio({{ loop.index0 }}, this.files[0])">
+        <span class="sub" id="audioStatus{{ loop.index0 }}"></span>
+      </div>
+      {% endif %}
+      <textarea id="text{{ loop.index0 }}" rows="3" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="{{ 'Type what you said (your transcript)…' if a.kind=='speaking' else 'Write your response…' }}"></textarea>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="panel">
+    {% if a.kind=='speaking' %}
+    <label class="sub" style="display:block;margin-bottom:10px"><input type="checkbox" id="audioBased"> I recorded spoken audio for these (enables a pronunciation estimate note)</label>
+    {% endif %}
+    <button class="btn primary" id="submitBtn" onclick="submitAll()">Submit for scoring</button>
+    <span class="sub" id="submitStatus" style="margin-left:12px"></span>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+const AID = "{{ a.id }}";
+const N = {{ prompts|length }};
+const KIND = "{{ a.kind }}";
+const PROMPTS = {{ prompts|tojson }};
+const recorders = {}, chunks = {};
+
+async function rec(i){
+  if(!navigator.mediaDevices){ alert('Recording not supported in this browser — upload an audio file instead.'); return; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const mr = new MediaRecorder(stream);
+    chunks[i] = [];
+    mr.ondataavailable = e => chunks[i].push(e.data);
+    mr.onstop = async () => {
+      const blob = new Blob(chunks[i], {type:'audio/webm'});
+      const el = document.getElementById('audio'+i);
+      el.src = URL.createObjectURL(blob); el.style.display='inline-block';
+      const fd = new FormData(); fd.append('file', blob, 'rec'+i+'.webm');
+      document.getElementById('audioStatus'+i).textContent = 'Saving…';
+      await fetch('/languages/assessment/'+AID+'/audio/'+i, {method:'POST', body:fd});
+      document.getElementById('audioStatus'+i).textContent = 'Saved ✓';
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mr.start(); recorders[i]=mr;
+    document.getElementById('recBtn'+i).disabled=true;
+    document.getElementById('stopBtn'+i).disabled=false;
+  }catch(e){ alert('Microphone unavailable: '+e+'. Upload an audio file instead.'); }
+}
+function stopRec(i){
+  if(recorders[i]){ recorders[i].stop();
+    document.getElementById('recBtn'+i).disabled=false;
+    document.getElementById('stopBtn'+i).disabled=true; }
+}
+async function uploadAudio(i, file){
+  if(!file) return;
+  const fd = new FormData(); fd.append('file', file, file.name);
+  document.getElementById('audioStatus'+i).textContent='Saving…';
+  await fetch('/languages/assessment/'+AID+'/audio/'+i, {method:'POST', body:fd});
+  document.getElementById('audioStatus'+i).textContent='Saved ✓';
+}
+async function submitAll(){
+  const responses = [];
+  for(let i=0;i<N;i++){
+    responses.push({prompt: PROMPTS[i].prompt, text: (document.getElementById('text'+i).value||'').trim()});
+  }
+  const audioBased = KIND==='speaking' && document.getElementById('audioBased') && document.getElementById('audioBased').checked;
+  const btn = document.getElementById('submitBtn'); btn.disabled=true;
+  document.getElementById('submitStatus').textContent='Scoring… (this can take a moment)';
+  try{
+    const r = await fetch('/languages/assessment/'+AID+'/submit', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({responses, audio_based: audioBased})});
+    const j = await r.json();
+    if(j.status==='scored'){ location.reload(); }
+    else { document.getElementById('submitStatus').textContent = j.message; btn.disabled=false; }
+  }catch(err){ document.getElementById('submitStatus').textContent='Failed: '+err; btn.disabled=false; }
+}
+</script>
+</body>
+</html>

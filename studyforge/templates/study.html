@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study — {{ sec.title }} — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/book/{{ m.id }}">← {{ m.name }}</a>
+  <div class="top">
+    <div><h1>{{ sec.title }}</h1><div class="sub">Flashcards &amp; quiz</div></div>
+    {% if sec.summary_pdf %}<a class="btn" href="/section/{{ sec.id }}/pdf" target="_blank">Open summary PDF</a>{% endif %}
+  </div>
+
+  {% if not learning %}
+  <div class="panel"><div class="empty">
+    <div class="big">🗂️</div>
+    <h3 style="color:var(--text)">No flashcards for this section</h3>
+    <p>Either this section hasn't finished processing, "Generate flashcards &amp; quiz" was off in
+      Settings when it ran, or generation failed for this section (non-fatal, so the summary
+      itself still completed). Reprocess the material with the setting on to generate them.</p>
+  </div></div>
+  {% else %}
+
+  <div class="tabs">
+    <button class="active" onclick="showTab('cards',this)">Flashcards ({{ learning.flashcards|length }})</button>
+    <button onclick="showTab('quiz',this)">Quiz ({{ learning.quiz|length }})</button>
+  </div>
+
+  <div id="cardsView">
+    <div class="panel" style="text-align:center">
+      <div class="sub" id="cardProgress">Card 1 / {{ learning.flashcards|length }}</div>
+      <div class="flashcard" id="flashcard" onclick="flipCard()">
+        <div class="fc-inner" id="fcInner">
+          <div class="fc-face fc-front"><div id="fcFront"></div></div>
+          <div class="fc-face fc-back"><div id="fcBack"></div></div>
+        </div>
+      </div>
+      <div class="sub" style="margin-top:8px">Click the card to flip</div>
+      <div style="display:flex;gap:10px;justify-content:center;margin-top:16px">
+        <button class="btn" onclick="prevCard()">← Prev</button>
+        <button class="btn primary" onclick="nextCard()">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="quizView" style="display:none">
+    <div class="panel">
+      <form id="quizForm">
+        {% for q in learning.quiz %}
+        {% set qidx = loop.index0 %}
+        <div class="quiz-q" data-answer="{{ q.answer_index }}">
+          <b>{{ loop.index }}. {{ q.q }}</b>
+          <div class="quiz-choices">
+            {% for choice in q.choices %}
+            <label class="quiz-choice">
+              <input type="radio" name="q{{ qidx }}" value="{{ loop.index0 }}"> {{ choice }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+        <button type="button" class="btn primary" onclick="checkQuiz()">Check answers</button>
+        <span class="sub" id="quizResult" style="margin-left:12px"></span>
+      </form>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+
+<script>
+{% if learning %}
+const CARDS = {{ learning.flashcards|tojson }};
+let idx = 0, flipped = false;
+
+function renderCard(){
+  document.getElementById('fcFront').textContent = CARDS[idx].q;
+  document.getElementById('fcBack').textContent = CARDS[idx].a;
+  document.getElementById('cardProgress').textContent = `Card ${idx+1} / ${CARDS.length}`;
+  flipped = false;
+  document.getElementById('fcInner').classList.remove('flipped');
+}
+function flipCard(){
+  flipped = !flipped;
+  document.getElementById('fcInner').classList.toggle('flipped', flipped);
+}
+function nextCard(){ idx = (idx+1) % CARDS.length; renderCard(); }
+function prevCard(){ idx = (idx-1+CARDS.length) % CARDS.length; renderCard(); }
+renderCard();
+
+function showTab(which, el){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('cardsView').style.display = which==='cards' ? 'block':'none';
+  document.getElementById('quizView').style.display = which==='quiz' ? 'block':'none';
+}
+
+async function checkQuiz(){
+  const qs = document.querySelectorAll('.quiz-q');
+  let correct = 0;
+  qs.forEach((qEl, i) => {
+    const answer = parseInt(qEl.dataset.answer);
+    const picked = qEl.querySelector('input[type=radio]:checked');
+    const choices = qEl.querySelectorAll('.quiz-choice');
+    choices.forEach((c, ci) => {
+      c.classList.remove('correct','incorrect');
+      if(ci === answer) c.classList.add('correct');
+      else if(picked && parseInt(picked.value) === ci) c.classList.add('incorrect');
+    });
+    if(picked && parseInt(picked.value) === answer) correct++;
+  });
+  const total = qs.length;
+  document.getElementById('quizResult').textContent = `Score: ${correct}/${total}`;
+  try{
+    await fetch('/section/{{ sec.id }}/quiz-result', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({correct, total})
+    });
+  }catch(e){ /* non-fatal if this fails */ }
+}
+{% endif %}
+</script>
+</body>
+</html>

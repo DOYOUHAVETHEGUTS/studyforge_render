@@ -1,0 +1,9 @@
+data/
+config/settings.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git/
+.env
+*.zip
