@@ -112,3 +112,54 @@ The architectural spine is the split between **instructional** data (what CAN be
   learner confirms spoken audio — from transcript alone it returns null and says so.
 - **Learning plan PDF export** via the existing renderer. Multi-language by design (one profile
   per language, each with independent path/materials/concepts/assessments).
+
+## Case studies (new, nested inside Interview Prep)
+
+Practice case-interview scenarios generated from a specific job posting, displayed inside that
+interview prep's own page (not a separate top-level section — a case study is inherently tied to
+one job posting/résumé pairing).
+
+- **Role-tailored type suggestions**: the AI reads the job posting and proposes 4-5 case types
+  that actually fit the role (e.g. partnership evaluation, market sizing, data/operations — not
+  generic consulting cases if the role doesn't call for them), plus an **easier/medium/harder**
+  difficulty selector. You can also base a case on a *different* interview prep's job posting you
+  uploaded earlier, without leaving the current one.
+- **Multiple valid approaches, not one rigid answer key**: every question carries 2-3 different
+  legitimate solution approaches. The printable **PDF** (scenario for live practice, then a
+  page-break, then a "Potential Ways to Answer" section) reflects this, and so does scoring —
+  the grader checks which approach the candidate's answer aligns with (or credits a reasonable
+  approach not listed), rather than requiring a verbatim match.
+- **Live timed run**: 20/30/60-minute or untimed, in-browser. When the timer hits zero it's a
+  **soft stop** — nothing is disabled or auto-submitted, your answers stay exactly as typed, and
+  you choose to keep going or submit as-is.
+- **Feedback per question**: `correct` (brief note on what satisfied the answer), `partial`, or
+  `incorrect` (detailed feedback on what a strong answer would have covered), grounded in the
+  job posting.
+- **Résumé-grounded gap analysis**: cross-references the candidate's résumé against the case and
+  job posting to call out real, textually-supported experience gaps — not speculation.
+
+Verified end-to-end (15 checks): type suggestion, generation with real multi-approach solutions,
+PDF page-break + solutions content confirmed via PDF text extraction, timed/untimed attempt
+creation, invalid-duration rejection, correct/partial scoring with matched/missing points,
+resume-grounded gaps, cross-prep job-posting sourcing, and cascade-delete of attempts.
+
+## Case studies (nested inside Interview Prep)
+
+- Lives inside each interview prep's detail page, not a separate section — a case study
+  only makes sense tied to a specific job posting/résumé.
+- **Both case type and difficulty are independently selectable.** Case types are
+  suggested dynamically per role (not a hardcoded list) — e.g. an Alliances Analytics
+  posting surfaces "Partnership Evaluation" and "Data & Operations" cases, not generic
+  consulting cases. Difficulty (Easier/Medium/Harder) adjusts ambiguity and structure.
+- Can base the case on the current prep's job posting, a **different saved prep** you've
+  already uploaded, via a dropdown.
+- **PDF**: practice-facing scenario + questions (no answers), a page break, then a
+  "Potential Ways to Answer" page. Every question carries 2–3 *different valid approaches*
+  with key points — not one rigid answer, matching how real case interviews are graded.
+- **Live timed run**: 20/30/60-minute soft timer. At zero, it stops counting and shows a
+  banner — nothing is disabled or auto-submitted, so no typed work is ever lost. The
+  candidate chooses to keep going or submit as-is.
+- **Scoring**: per-question verdict (correct/partial/incorrect) checked against whichever
+  approach the answer aligns with. Correct → a brief note on what satisfied it. Wrong →
+  detailed feedback on what a strong answer would have covered. Résumé-grounded gaps are
+  called out only with real textual support, not speculation.

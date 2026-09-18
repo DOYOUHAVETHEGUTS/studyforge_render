@@ -64,13 +64,62 @@ class AnthropicClient:
 
 
 def _extract_json(text):
-    """Pull the first JSON object/array out of a model response."""
-    text = text.strip()
-    text = re.sub(r"^```(json)?|```$", "", text, flags=re.M).strip()
-    m = re.search(r"(\{.*\}|\[.*\])", text, re.S)
-    if not m:
-        raise LLMError("no JSON found in model response")
-    return json.loads(m.group(1))
+    """Pull the first JSON object/array out of a model response, tolerating prose
+    wrapping, code fences, and (best-effort) truncated output."""
+    raw = text.strip()
+    # strip code fences if present
+    stripped = re.sub(r"^```(json)?|```$", "", raw, flags=re.M).strip()
+
+    # Find the first opening brace/bracket and balance from there, so we don't depend on
+    # a greedy regex guessing the right span or the JSON being the whole message.
+    start = None
+    for i, ch in enumerate(stripped):
+        if ch in "{[":
+            start = i
+            break
+    if start is None:
+        raise LLMError(f"no JSON found in model response (first 200 chars: {raw[:200]!r})")
+
+    candidate = stripped[start:]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    # Balance braces/brackets to recover the outermost complete structure, ignoring
+    # anything inside string literals. Handles trailing prose after valid JSON.
+    depth = 0
+    in_str = False
+    esc = False
+    end = None
+    for i, ch in enumerate(candidate):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            depth += 1
+        elif ch in "}]":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                break
+    if end is not None:
+        try:
+            return json.loads(candidate[:end])
+        except json.JSONDecodeError:
+            pass
+
+    # Likely truncated (hit max_tokens mid-output). Give a clear, actionable error.
+    raise LLMError(
+        "model response was not valid JSON — it may have been cut off (raise max_tokens) "
+        f"or wrapped in extra text. First 200 chars: {candidate[:200]!r}")
 
 
 # --------------------------------------------------------------------------

@@ -83,7 +83,8 @@ def generate_case_study(client, *, role_title, company, job_posting, resume_text
             f"--- JOB POSTING ---\n{job_posting[:8000]}\n\n"
             f"--- CANDIDATE RESUME (for realistic context only; not needed in the scenario) ---\n"
             f"{resume_text[:3000] if resume_text else '(none provided)'}")
-    return _extract_json(client.call(GENERATE_SYSTEM, user, max_tokens=4000))
+    # 8000: scenario + questions + 2-3 approaches per question can exceed 4000 tokens.
+    return _extract_json(client.call(GENERATE_SYSTEM, user, max_tokens=8000))
 
 
 def score_case_attempt(client, *, role_title, job_posting, resume_text, questions_with_solutions,
@@ -100,4 +101,7 @@ def score_case_attempt(client, *, role_title, job_posting, resume_text, question
     user = (f"Role: {role_title}\n\n--- JOB POSTING (excerpt) ---\n{job_posting[:3000]}\n\n"
             f"--- CANDIDATE RESUME ---\n{resume_text[:3000] if resume_text else '(none provided)'}\n\n"
             + "\n\n".join(blocks))
-    return _extract_json(client.call(SCORE_SYSTEM, user, max_tokens=4000))
+    # 8000 (not 4000): scoring returns per-question feedback for every question plus gaps
+    # and a summary, which can exceed 4000 tokens for a 4-5 question case and get truncated
+    # mid-JSON (the #1 cause of "scoring failed" after a billed call).
+    return _extract_json(client.call(SCORE_SYSTEM, user, max_tokens=8000))

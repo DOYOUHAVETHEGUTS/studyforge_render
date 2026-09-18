@@ -16,6 +16,16 @@
     {% endif %}
   </div>
 
+  {% if a.status == 'failed' %}
+  <div class="panel">
+    <div class="banner err">
+      <div><b>Scoring failed</b> — your answers below were preserved. You can edit and resubmit.
+        {% if a.error %}<div class="sub" style="margin-top:6px;font-family:monospace">{{ a.error }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if a.status == 'scored' %}
   <!-- ============ SCORED RESULTS ============ -->
   <div class="panel">
@@ -67,11 +77,12 @@
   </div>
 
   {% for q in questions %}
+  {% set saved = (responses|selectattr('question_id','equalto',q.id)|first) %}
   <div class="panel">
     <div class="settings-section" style="margin-bottom:0">
       <h3>Question {{ loop.index }}</h3>
       <p>{{ q.question }}</p>
-      <textarea id="ans_{{ q.id }}" rows="5" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px" placeholder="Your answer…"></textarea>
+      <textarea id="ans_{{ q.id }}" rows="5" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px" placeholder="Your answer…">{{ saved.answer if saved else '' }}</textarea>
     </div>
   </div>
   {% endfor %}
