@@ -575,3 +575,160 @@ def _lang_plan_markdown(prof, diag, path):
     if path.get("review_focus"):
         lines += ["## Review Focus", ""] + [f"- {r}" for r in path["review_focus"]] + [""]
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# Case studies (nested under Interview Prep)
+# --------------------------------------------------------------------------
+CASE_DIR = config.DATA_DIR / "case_studies"
+
+_DIFFICULTY_LABELS = {"easier": "Easier", "medium": "Medium", "harder": "Harder"}
+
+
+def suggest_case_types(interview_prep_id, *, settings=None, log=print):
+    from . import case_study
+    settings = settings or config.load_settings()
+    api_key = config.get_api_key(settings)
+    if not api_key:
+        raise RuntimeError(
+            f"No AI provider configured. Open Settings to add your Anthropic API key, "
+            f"or export {settings['anthropic_api_key_env']}.")
+    prep = db.get_interview_prep(interview_prep_id)
+    if not prep:
+        raise RuntimeError("Unknown interview prep.")
+    client = case_study.AnthropicClient(api_key, settings["model"], settings["max_tokens"],
+                                        settings["max_retries"])
+    return case_study.suggest_case_types(
+        client, role_title=prep["role_title"], company=prep["company"],
+        job_posting=prep["job_posting"])
+
+
+def create_and_generate_case_study(interview_prep_id, *, source_prep_id=None,
+                                   case_type="", case_type_label="", difficulty="medium",
+                                   settings=None, log=print):
+    from . import case_study, render
+    settings = settings or config.load_settings()
+    api_key = config.get_api_key(settings)
+    if not api_key:
+        raise RuntimeError(
+            f"No AI provider configured. Open Settings to add your Anthropic API key, "
+            f"or export {settings['anthropic_api_key_env']}.")
+
+    source_prep_id = source_prep_id or interview_prep_id
+    source = db.get_interview_prep(source_prep_id)
+    if not source:
+        raise RuntimeError("Unknown source interview prep for the job description.")
+    if not source["job_posting"].strip():
+        raise RuntimeError("The selected interview prep has no job posting text to base a case on.")
+
+    cid = db.add_case_study(interview_prep_id, source_prep_id, case_type, case_type_label,
+                            difficulty)
+    client = case_study.AnthropicClient(api_key, settings["model"], settings["max_tokens"],
+                                        settings["max_retries"])
+    db.update_case_study(cid, status="generating")
+    try:
+        log(f"Generating {case_type_label} case study ({difficulty})...")
+        data = case_study.generate_case_study(
+            client, role_title=source["role_title"], company=source["company"],
+            job_posting=source["job_posting"], resume_text=source["resume_text"],
+            case_type_label=case_type_label, difficulty=_DIFFICULTY_LABELS.get(difficulty, difficulty))
+
+        title = data.get("title") or f"{case_type_label} Case Study"
+        questions = data.get("questions", [])
+        solutions = data.get("solutions", [])
+
+        CASE_DIR.mkdir(parents=True, exist_ok=True)
+        slug = "".join(ch if ch.isalnum() else "_" for ch in title)[:50] or "case"
+        pdf_path = CASE_DIR / f"{cid}_{slug}.pdf"
+        pdf_md = _case_pdf_markdown(title, data.get("scenario_md", ""), solutions, questions)
+        render.render_pdf(pdf_md, pdf_path, title)
+
+        db.update_case_study(
+            cid, status="generated", title=title, scenario_md=data.get("scenario_md", ""),
+            questions_json=json.dumps(questions), solutions_json=json.dumps(solutions),
+            case_pdf=config.rel(pdf_path))
+        log(f"Case study generated: {len(questions)} question(s).")
+        return cid
+    except Exception as e:  # noqa: BLE001
+        db.update_case_study(cid, status="failed", error=str(e)[:400])
+        log(f"FAILED: {e}")
+        raise
+
+
+def _case_pdf_markdown(title, scenario_md, solutions, questions):
+    q_lookup = {q["id"]: q["question"] for q in questions}
+    parts = [scenario_md.strip(), "", "<!--pagebreak-->", "", "# Potential Ways to Answer", "",
+            "*These are a few valid approaches — a strong answer doesn't need to match one "
+            "exactly, but should cover the substance of at least one.*", ""]
+    for sol in solutions:
+        qid = sol.get("question_id", "")
+        parts.append(f"## {q_lookup.get(qid, qid)}")
+        parts.append("")
+        for approach in sol.get("approaches", []):
+            parts.append(f"### Approach: {approach.get('name','')}")
+            for kp in approach.get("key_points", []):
+                parts.append(f"- {kp}")
+            parts.append("")
+        if sol.get("model_notes"):
+            parts.append(f"**Notes:** {sol['model_notes']}")
+            parts.append("")
+    return "\n".join(parts)
+
+
+def start_case_attempt(case_study_id, duration_minutes=None, *, log=print):
+    if duration_minutes is not None and int(duration_minutes) not in (20, 30, 60):
+        raise RuntimeError("duration_minutes must be 20, 30, 60, or omitted for untimed practice.")
+    aid = db.add_case_attempt(case_study_id, duration_minutes)
+    log(f"Started attempt {aid} ({duration_minutes or 'untimed'} min)")
+    return aid
+
+
+def submit_case_attempt(attempt_id, responses, *, settings=None, log=print):
+    """responses: list of {"question_id": str, "answer": str}."""
+    from . import case_study
+    settings = settings or config.load_settings()
+    attempt = db.get_case_attempt(attempt_id)
+    if not attempt:
+        raise RuntimeError("Unknown attempt.")
+    cs = db.get_case_study(attempt["case_study_id"])
+    source = db.get_interview_prep(cs["source_prep_id"])
+
+    db.update_case_attempt(attempt_id, status="submitted", submitted_at=_now_iso(),
+                           responses_json=json.dumps(responses))
+
+    api_key = config.get_api_key(settings)
+    if not api_key:
+        db.update_case_attempt(attempt_id, status="failed",
+                               error="No AI provider configured.")
+        raise RuntimeError("No AI provider configured. Open Settings to add your API key.")
+
+    client = case_study.AnthropicClient(api_key, settings["model"], settings["max_tokens"],
+                                        settings["max_retries"])
+    solutions = json.loads(cs["solutions_json"]) if cs["solutions_json"] else []
+    questions = {q["id"]: q["question"] for q in json.loads(cs["questions_json"] or "[]")}
+    qws = [{"question_id": s["question_id"], "question_text": questions.get(s["question_id"], ""),
+           "approaches": s.get("approaches", [])} for s in solutions]
+    responses_by_qid = {r["question_id"]: r.get("answer", "") for r in responses}
+
+    try:
+        result = case_study.score_case_attempt(
+            client, role_title=source["role_title"], job_posting=source["job_posting"],
+            resume_text=source["resume_text"], questions_with_solutions=qws,
+            responses_by_qid=responses_by_qid)
+        db.update_case_attempt(
+            attempt_id, status="scored",
+            feedback_json=json.dumps(result.get("per_question", [])),
+            gaps_json=json.dumps(result.get("gaps", [])),
+            overall_summary=result.get("overall_summary", ""),
+            score_percent=result.get("score_percent"))
+        log(f"Scored: {result.get('score_percent')}%")
+        return result
+    except Exception as e:  # noqa: BLE001
+        db.update_case_attempt(attempt_id, status="failed", error=str(e)[:400])
+        log(f"Scoring FAILED: {e}")
+        raise
+
+
+def _now_iso():
+    from datetime import datetime
+    return datetime.now().isoformat()

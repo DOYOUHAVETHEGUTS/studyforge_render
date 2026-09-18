@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ c.title }} — Case Study</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/interview/{{ c.interview_prep_id }}">← Back to interview prep</a>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+      <div><h1>{{ c.title }}</h1>
+        <div class="sub">{{ c.case_type_label }} · {{ c.difficulty|title }} difficulty</div></div>
+      {% if c.status=='generated' %}<span class="badge ok"><span class="dot"></span>Ready</span>
+      {% elif c.status=='failed' %}<span class="badge err"><span class="dot"></span>Failed</span>
+      {% else %}<span class="badge run"><span class="dot"></span>{{ c.status }}</span>{% endif %}
+    </div>
+    {% if c.error %}<div class="banner warn" style="margin-top:14px">⚠ {{ c.error }}</div>{% endif %}
+    {% if c.case_pdf %}
+    <div style="margin-top:16px">
+      <a class="btn" href="/case/{{ c.id }}/pdf" target="_blank">Open printable PDF</a>
+      <span class="sub" style="margin-left:8px">Includes a solutions page at the end for after you practice.</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if c.status == 'generated' %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Scenario</h3>
+      <div class="reader" style="white-space:pre-wrap;font-size:14px;line-height:1.6">{{ c.scenario_md }}</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Start a live run</h3>
+      <p class="sub">Answer in the browser and get AI feedback per question, plus resume-based
+        gap notes. Timers are a soft limit — if time runs out you keep your work and can
+        finish up or submit as-is.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" onclick="start(20)">⏱ 20 min</button>
+        <button class="btn primary" onclick="start(30)">⏱ 30 min</button>
+        <button class="btn primary" onclick="start(60)">⏱ 60 min</button>
+        <button class="btn" onclick="start(null)">Untimed practice</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if attempts %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Past attempts</h3>
+      <div class="toc">
+        {% for a in attempts %}
+        <div class="row"><div class="t">
+          <a href="/case/attempt/{{ a.id }}" style="color:var(--text)">
+            <b>{{ a.duration_minutes ~ ' min' if a.duration_minutes else 'Untimed' }}</b></a>
+          <small>{{ a.started_at[:16] }}{% if a.score_percent is not none %} · {{ a.score_percent|round(0) }}%{% endif %}</small></div>
+          {% if a.status=='scored' %}<span class="badge ok"><span class="dot"></span>Scored</span>
+          {% elif a.status=='in_progress' %}<span class="badge idle"><span class="dot"></span>In progress</span>
+          {% else %}<span class="badge run"><span class="dot"></span>{{ a.status }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <form method="post" action="/case/{{ c.id }}/delete" onsubmit="return confirm('Delete this case study and all attempts?')">
+      <button class="btn danger">Delete case study</button>
+    </form>
+  </div>
+</div>
+
+<script>
+async function start(duration){
+  const fd = new FormData();
+  if(duration) fd.append('duration_minutes', duration);
+  const r = await fetch('/case/{{ c.id }}/attempt/start', {method:'POST', body: fd});
+  const j = await r.json();
+  if(j.status === 'started'){ location.href = '/case/attempt/'+j.attempt_id; }
+  else { alert(j.message || 'Could not start.'); }
+}
+</script>
+</body>
+</html>

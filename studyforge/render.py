@@ -17,7 +17,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import HRFlowable, PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
 _HR_RE = re.compile(r"^\s*([-*_])\1{2,}\s*$")
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -66,6 +66,10 @@ def render_pdf(markdown_text, out_path, doc_title=""):
     for raw_line in markdown_text.splitlines():
         line = _sanitize(raw_line.rstrip())
         s = line
+
+        if s.strip() == "<!--pagebreak-->":
+            story.append(PageBreak())
+            continue
 
         if not s:
             story.append(Spacer(1, 4))

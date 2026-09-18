@@ -591,8 +591,10 @@ def interview_detail(request: Request, iid: str):
             questions = json.loads(prep["questions_json"])
         except json.JSONDecodeError:
             questions = []
+    all_preps = [p for p in db.list_interview_preps() if p["id"] != iid]
     return templates.TemplateResponse(request, "interview_detail.html", {
         "p": prep, "questions": questions, "job": _interview_jobs.get(iid),
+        "case_studies": db.get_case_studies(iid), "other_preps": all_preps,
     })
 
 
@@ -619,6 +621,150 @@ def api_interview(iid: str):
 def interview_delete(iid: str):
     db.delete_interview_prep(iid)
     return RedirectResponse("/interview", status_code=303)
+
+
+# ---- case studies (nested under interview prep) --------------------------
+_case_jobs = {}   # case_study_id -> {"log": [...], "running": bool}
+_case_score_jobs = {}  # attempt_id -> {"log": [...], "running": bool}
+
+
+@app.get("/interview/{iid}/case/suggest-types")
+def case_suggest_types(iid: str):
+    try:
+        types = pipeline.suggest_case_types(iid, log=lambda *_: None)
+        return JSONResponse({"status": "ok", "types": types})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+def _run_case_gen_job(iid, kwargs):
+    key = kwargs.get("_job_key")
+    _case_jobs[key] = {"log": [], "running": True, "case_id": None}
+    log = lambda m: _case_jobs[key]["log"].append(str(m))  # noqa: E731
+    try:
+        cid = pipeline.create_and_generate_case_study(
+            iid, source_prep_id=kwargs["source_prep_id"], case_type=kwargs["case_type"],
+            case_type_label=kwargs["case_type_label"], difficulty=kwargs["difficulty"], log=log)
+        _case_jobs[key]["case_id"] = cid
+    except Exception as e:  # noqa: BLE001
+        log(f"FATAL: {e}")
+    finally:
+        _case_jobs[key]["running"] = False
+
+
+@app.post("/interview/{iid}/case/create")
+async def case_create(iid: str, background: BackgroundTasks, request: Request):
+    body = await request.json()
+    if not config.readiness(config.load_settings())["ai"]:
+        return JSONResponse({"status": "error",
+                             "message": "An AI provider has not been configured yet. Open Settings."},
+                            status_code=400)
+    import uuid
+    job_key = uuid.uuid4().hex[:10]
+    kwargs = {
+        "_job_key": job_key,
+        "source_prep_id": body.get("source_prep_id") or iid,
+        "case_type": body.get("case_type", ""),
+        "case_type_label": body.get("case_type_label", "Case Study"),
+        "difficulty": body.get("difficulty", "medium"),
+    }
+    background.add_task(_run_case_gen_job, iid, kwargs)
+    return JSONResponse({"status": "started", "job_key": job_key})
+
+
+@app.get("/api/case-job/{job_key}")
+def case_job_status(job_key: str):
+    j = _case_jobs.get(job_key)
+    if not j:
+        return JSONResponse({"status": "unknown"})
+    return JSONResponse({"status": "ok", "running": j["running"], "log": j["log"],
+                         "case_id": j.get("case_id")})
+
+
+@app.get("/case/{cid}", response_class=HTMLResponse)
+def case_detail(request: Request, cid: str):
+    cs = db.get_case_study(cid)
+    if not cs:
+        return RedirectResponse("/interview")
+    return templates.TemplateResponse(request, "case_detail.html", {
+        "c": cs, "attempts": db.get_case_attempts(cid),
+    })
+
+
+@app.get("/case/{cid}/pdf")
+def case_pdf(cid: str):
+    cs = db.get_case_study(cid)
+    if not cs or not cs.get("case_pdf"):
+        return JSONResponse({"status": "error", "message": "No PDF generated yet."},
+                            status_code=404)
+    path = config.abspath(cs["case_pdf"])
+    if not path.exists():
+        return JSONResponse({"status": "error", "message": "PDF file is missing on disk."},
+                            status_code=404)
+    return FileResponse(path, media_type="application/pdf", filename=path.name,
+                        content_disposition_type="inline")
+
+
+@app.post("/case/{cid}/attempt/start")
+def case_attempt_start(cid: str, duration_minutes: str = Form("")):
+    dur = int(duration_minutes) if duration_minutes.strip() else None
+    try:
+        aid = pipeline.start_case_attempt(cid, dur, log=lambda *_: None)
+        return JSONResponse({"status": "started", "attempt_id": aid})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+@app.get("/case/attempt/{aid}", response_class=HTMLResponse)
+def case_attempt_page(request: Request, aid: str):
+    a = db.get_case_attempt(aid)
+    if not a:
+        return RedirectResponse("/interview")
+    cs = db.get_case_study(a["case_study_id"])
+    questions = json.loads(cs["questions_json"]) if cs.get("questions_json") else []
+    feedback = json.loads(a["feedback_json"]) if a.get("feedback_json") else []
+    gaps = json.loads(a["gaps_json"]) if a.get("gaps_json") else []
+    responses = json.loads(a["responses_json"]) if a.get("responses_json") else []
+    return templates.TemplateResponse(request, "case_attempt.html", {
+        "a": a, "c": cs, "questions": questions, "feedback": feedback,
+        "gaps": gaps, "responses": responses, "job": _case_score_jobs.get(aid),
+    })
+
+
+@app.post("/case/attempt/{aid}/submit")
+async def case_attempt_submit(aid: str, background: BackgroundTasks, request: Request):
+    body = await request.json()
+    responses = body.get("responses", [])
+    if not any((r.get("answer") or "").strip() for r in responses):
+        return JSONResponse(
+            {"status": "error", "message": "Answer at least one question before submitting."},
+            status_code=400)
+
+    def job():
+        _case_score_jobs[aid] = {"log": [], "running": True}
+        log = lambda m: _case_score_jobs[aid]["log"].append(str(m))  # noqa: E731
+        try:
+            pipeline.submit_case_attempt(aid, responses, log=log)
+        except Exception as e:  # noqa: BLE001
+            log(f"FATAL: {e}")
+        finally:
+            _case_score_jobs[aid]["running"] = False
+
+    background.add_task(job)
+    return JSONResponse({"status": "started"})
+
+
+@app.get("/api/case-attempt/{aid}")
+def api_case_attempt(aid: str):
+    return {"attempt": db.get_case_attempt(aid), "job": _case_score_jobs.get(aid)}
+
+
+@app.post("/case/{cid}/delete")
+def case_delete(cid: str):
+    cs = db.get_case_study(cid)
+    iid = cs["interview_prep_id"] if cs else None
+    db.delete_case_study(cid)
+    return RedirectResponse(f"/interview/{iid}" if iid else "/interview", status_code=303)
 
 
 # ---- api -----------------------------------------------------------------

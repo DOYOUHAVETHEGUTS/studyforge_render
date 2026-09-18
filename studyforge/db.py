@@ -146,6 +146,44 @@ CREATE TABLE IF NOT EXISTS lang_assessments (
 """
 
 
+CASE_STUDY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS case_studies (
+    id            TEXT PRIMARY KEY,
+    interview_prep_id TEXT NOT NULL,      -- which prep page this is nested under/displayed on
+    source_prep_id TEXT NOT NULL,         -- which prep's job posting/resume it was generated from
+                                          -- (usually == interview_prep_id, but can reference another)
+    case_type     TEXT DEFAULT '',        -- e.g. market_sizing | profitability | data_operations | custom
+    case_type_label TEXT DEFAULT '',
+    difficulty    TEXT DEFAULT 'medium',  -- easier | medium | harder
+    title         TEXT DEFAULT '',
+    status        TEXT DEFAULT 'pending', -- pending -> generating -> generated -> failed
+    scenario_md   TEXT DEFAULT '',        -- practice-facing content: background + questions, NO answers
+    questions_json TEXT DEFAULT '',       -- [{id, question}]
+    solutions_json TEXT DEFAULT '',       -- [{question_id, approaches:[{name,key_points}], model_notes}]
+    case_pdf      TEXT DEFAULT '',        -- rendered PDF (relative path), includes solutions last page
+    error         TEXT DEFAULT '',
+    created_at    TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (interview_prep_id) REFERENCES interview_preps(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS case_attempts (
+    id            TEXT PRIMARY KEY,
+    case_study_id TEXT NOT NULL,
+    duration_minutes INTEGER,             -- 20 | 30 | 60 | NULL (untimed practice)
+    started_at    TEXT DEFAULT (datetime('now')),
+    submitted_at  TEXT DEFAULT '',
+    responses_json TEXT DEFAULT '',
+    status        TEXT DEFAULT 'in_progress', -- in_progress -> submitted -> scored -> failed
+    feedback_json TEXT DEFAULT '',        -- [{question, verdict, matched_approach, matched_points,
+                                          --   missing_points, feedback}]
+    gaps_json     TEXT DEFAULT '',        -- resume-grounded gap callouts
+    overall_summary TEXT DEFAULT '',
+    score_percent REAL,
+    error         TEXT DEFAULT '',
+    FOREIGN KEY (case_study_id) REFERENCES case_studies(id) ON DELETE CASCADE
+);
+"""
+
+
 @contextmanager
 def conn():
     c = sqlite3.connect(config.DB_PATH)
@@ -163,6 +201,7 @@ def init_db():
         c.executescript(SCHEMA)
         c.executescript(INTERVIEW_SCHEMA)
         c.executescript(LANGUAGE_SCHEMA)
+        c.executescript(CASE_STUDY_SCHEMA)
         for stmt in _MIGRATIONS:
             try:
                 c.execute(stmt)
@@ -475,3 +514,73 @@ def update_lang_assessment(aid, **fields):
 def delete_lang_assessment(aid):
     with conn() as c:
         c.execute("DELETE FROM lang_assessments WHERE id=?", (aid,))
+
+
+# ---- case studies (nested under interview prep) --------------------------
+def add_case_study(interview_prep_id, source_prep_id, case_type, case_type_label,
+                   difficulty, title="") -> str:
+    cid = new_id()
+    with conn() as c:
+        c.execute("""INSERT INTO case_studies
+                     (id, interview_prep_id, source_prep_id, case_type, case_type_label,
+                      difficulty, title)
+                     VALUES (?,?,?,?,?,?,?)""",
+                  (cid, interview_prep_id, source_prep_id, case_type, case_type_label,
+                   difficulty, title))
+    return cid
+
+
+def get_case_studies(interview_prep_id):
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM case_studies WHERE interview_prep_id=? ORDER BY created_at DESC",
+            (interview_prep_id,))]
+
+
+def get_case_study(cid):
+    with conn() as c:
+        r = c.execute("SELECT * FROM case_studies WHERE id=?", (cid,)).fetchone()
+        return dict(r) if r else None
+
+
+def update_case_study(cid, **fields):
+    if not fields:
+        return
+    cols = ", ".join(f"{k}=?" for k in fields)
+    with conn() as c:
+        c.execute(f"UPDATE case_studies SET {cols} WHERE id=?", list(fields.values()) + [cid])
+
+
+def delete_case_study(cid):
+    with conn() as c:
+        c.execute("DELETE FROM case_studies WHERE id=?", (cid,))
+
+
+# ---- case attempts ---------------------------------------------------------
+def add_case_attempt(case_study_id, duration_minutes=None) -> str:
+    aid = new_id()
+    with conn() as c:
+        c.execute("""INSERT INTO case_attempts (id, case_study_id, duration_minutes)
+                     VALUES (?,?,?)""", (aid, case_study_id, duration_minutes))
+    return aid
+
+
+def get_case_attempt(aid):
+    with conn() as c:
+        r = c.execute("SELECT * FROM case_attempts WHERE id=?", (aid,)).fetchone()
+        return dict(r) if r else None
+
+
+def get_case_attempts(case_study_id):
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM case_attempts WHERE case_study_id=? ORDER BY started_at DESC",
+            (case_study_id,))]
+
+
+def update_case_attempt(aid, **fields):
+    if not fields:
+        return
+    cols = ", ".join(f"{k}=?" for k in fields)
+    with conn() as c:
+        c.execute(f"UPDATE case_attempts SET {cols} WHERE id=?", list(fields.values()) + [aid])
