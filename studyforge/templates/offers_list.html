@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offer Comparison — StudyForge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><div class="mark">SF</div>
+      <div><b>StudyForge</b><small>offer comparison</small></div></div>
+    <div style="display:flex;gap:10px">
+      <a class="btn" href="/interview">← Interview Prep</a>
+      <a class="btn" href="/">Library</a>
+    </div>
+  </div>
+
+  {% if not ready.ai %}
+  <div class="banner warn"><div>⚠ AI provider not configured — <a href="/settings">add your API key</a> to generate questions and rankings.</div></div>
+  {% endif %}
+
+  <div class="top">
+    <div><h1>Offer Comparison</h1>
+      <div class="sub">Weigh competing offers against what actually matters to you.</div></div>
+    <button class="btn primary" onclick="openCreate()">＋ New comparison</button>
+  </div>
+
+  {% if comparisons %}
+  <div class="grid">
+    {% for c in comparisons %}
+    <div class="card">
+      <div class="cover g2"><span class="type">Offers</span></div>
+      <div class="body">
+        <h3><a href="/offers/{{ c.id }}" style="color:var(--text)">{{ c.title }}</a></h3>
+        {% if c.status=='ranked' %}<span class="badge ok"><span class="dot"></span>Ranked</span>
+        {% elif c.status=='questioned' %}<span class="badge run"><span class="dot"></span>Questions ready</span>
+        {% elif c.status=='failed' %}<span class="badge err"><span class="dot"></span>Failed</span>
+        {% else %}<span class="badge idle"><span class="dot"></span>Draft</span>{% endif %}
+        <div style="margin-top:12px"><a class="btn sm" href="/offers/{{ c.id }}">Open</a></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><div class="empty">
+    <div class="big">⚖️</div>
+    <h3 style="color:var(--text)">No comparisons yet</h3>
+    <p>Add two or more offers — job descriptions, comp, benefits, relocation, and anything else
+      you're weighing. StudyForge asks what matters to you, then ranks them accordingly.</p>
+  </div></div>
+  {% endif %}
+
+  <div id="createModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-head"><b>New offer comparison</b><span class="modal-close" onclick="closeCreate()">×</span></div>
+      <form id="createForm">
+        <div class="field-row"><label>Title</label><input name="title" placeholder="e.g. Spring 2026 offers"></div>
+        <div class="settings-section" style="margin-top:10px">
+          <h3>Your résumé / background</h3>
+          <textarea name="resume_text" rows="3" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Paste your résumé…"></textarea>
+          <div class="sub" style="margin:6px 0">…or upload:</div>
+          <input type="file" name="resume_file" accept=".pdf,.docx,.txt,.md">
+        </div>
+        <div class="settings-section">
+          <h3>What matters to you?</h3>
+          <textarea name="priorities" rows="3" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="e.g. staying near family, comp floor of $X, wanting to move into strategy work, avoiding heavy travel…"></textarea>
+        </div>
+        <div id="createStatus" class="sub" style="margin:8px 0"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="btn" onclick="closeCreate()">Cancel</button>
+          <button type="submit" class="btn primary" id="createSubmit">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+function openCreate(){ document.getElementById('createModal').style.display='flex'; }
+function closeCreate(){ document.getElementById('createModal').style.display='none'; }
+document.getElementById('createForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('createSubmit'); btn.disabled=true;
+  document.getElementById('createStatus').textContent='Creating…';
+  try{
+    const r = await fetch('/offers/create', {method:'POST', body:new FormData(e.target)});
+    const j = await r.json();
+    if(j.status==='added'){ location.href='/offers/'+j.comparison_id; }
+    else { document.getElementById('createStatus').textContent=j.message; btn.disabled=false; }
+  }catch(err){ document.getElementById('createStatus').textContent='Failed: '+err; btn.disabled=false; }
+});
+</script>
+</body>
+</html>

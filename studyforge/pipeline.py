@@ -732,3 +732,81 @@ def submit_case_attempt(attempt_id, responses, *, settings=None, log=print):
 def _now_iso():
     from datetime import datetime
     return datetime.now().isoformat()
+
+
+# --------------------------------------------------------------------------
+# Offer comparison (nested under Interview Prep)
+# --------------------------------------------------------------------------
+def _offers_client(settings):
+    from . import offers as offers_mod
+    api_key = config.get_api_key(settings)
+    if not api_key:
+        raise RuntimeError(
+            f"No AI provider configured. Open Settings to add your Anthropic API key, "
+            f"or export {settings['anthropic_api_key_env']}.")
+    return offers_mod.AnthropicClient(api_key, settings["model"], settings["max_tokens"],
+                                      settings["max_retries"])
+
+
+def add_offer_to_comparison(comparison_id, label, *, job_posting_source=None,
+                            job_posting_text="", **kw):
+    """Add one offer. The JD may be pasted text or an uploaded file (extracted here)."""
+    from . import ingest
+    jp = job_posting_text
+    if job_posting_source:
+        jp = ingest.extract_file(job_posting_source)
+    return db.add_offer(comparison_id, label, job_posting=jp, **kw)
+
+
+def generate_offer_questions(comparison_id, *, settings=None, log=print):
+    from . import offers as offers_mod
+    settings = settings or config.load_settings()
+    comp = db.get_offer_comparison(comparison_id)
+    if not comp:
+        raise RuntimeError("Unknown comparison.")
+    offer_rows = db.get_offers(comparison_id)
+    if len(offer_rows) < 2:
+        raise RuntimeError("Add at least two offers before generating questions.")
+    client = _offers_client(settings)
+    try:
+        questions = offers_mod.generate_questions(
+            client, offers=offer_rows, resume_text=comp["resume_text"],
+            priorities=comp["priorities"])
+        if not questions:
+            raise RuntimeError("No questions were generated. Try again.")
+        db.update_offer_comparison(comparison_id, status="questioned", error="",
+                                   questions_json=json.dumps(questions))
+        log(f"Generated {len(questions)} questions")
+        return questions
+    except Exception as e:  # noqa: BLE001
+        db.update_offer_comparison(comparison_id, status="failed", error=str(e)[:400])
+        log(f"FAILED: {e}")
+        raise
+
+
+def rank_offer_comparison(comparison_id, answers_by_id, *, settings=None, log=print):
+    from . import offers as offers_mod
+    settings = settings or config.load_settings()
+    comp = db.get_offer_comparison(comparison_id)
+    if not comp:
+        raise RuntimeError("Unknown comparison.")
+    questions = json.loads(comp["questions_json"]) if comp["questions_json"] else []
+    if not questions:
+        raise RuntimeError("Generate the questions before ranking.")
+    offer_rows = db.get_offers(comparison_id)
+    db.update_offer_comparison(comparison_id, answers_json=json.dumps(answers_by_id))
+    client = _offers_client(settings)
+    try:
+        result = offers_mod.rank_offers(
+            client, offers=offer_rows, resume_text=comp["resume_text"],
+            priorities=comp["priorities"], questions=questions, answers_by_id=answers_by_id)
+        db.update_offer_comparison(
+            comparison_id, status="ranked", error="",
+            ranking_json=json.dumps(result.get("ranking", [])),
+            summary=result.get("summary", ""))
+        log("Ranked offers")
+        return result
+    except Exception as e:  # noqa: BLE001
+        db.update_offer_comparison(comparison_id, status="failed", error=str(e)[:400])
+        log(f"FAILED: {e}")
+        raise

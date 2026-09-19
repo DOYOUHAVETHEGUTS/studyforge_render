@@ -496,6 +496,130 @@ def lang_delete(pid: str):
     return RedirectResponse("/languages", status_code=303)
 
 
+# ---- offer comparison (nested under interview prep) ----------------------
+@app.get("/offers", response_class=HTMLResponse)
+def offers_list(request: Request):
+    return templates.TemplateResponse(request, "offers_list.html", {
+        "comparisons": db.list_offer_comparisons(),
+        "ready": config.readiness(config.load_settings()),
+    })
+
+
+@app.post("/offers/create")
+async def offers_create(title: str = Form(""), resume_text: str = Form(""),
+                        priorities: str = Form(""), resume_file: UploadFile = File(None)):
+    rt = resume_text
+    tmp = None
+    try:
+        if resume_file is not None and resume_file.filename:
+            from . import ingest
+            tmp = config.UPLOADS_DIR / f"_offer_{resume_file.filename}"
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(resume_file.file, f)
+            rt = ingest.extract_file(str(tmp))
+        oid = db.add_offer_comparison(title.strip() or "Offer comparison",
+                                      resume_text=rt, priorities=priorities)
+        return JSONResponse({"status": "added", "comparison_id": oid})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
+
+
+@app.get("/offers/{oid}", response_class=HTMLResponse)
+def offers_detail(request: Request, oid: str):
+    comp = db.get_offer_comparison(oid)
+    if not comp:
+        return RedirectResponse("/offers")
+    questions = json.loads(comp["questions_json"]) if comp["questions_json"] else []
+    answers = json.loads(comp["answers_json"]) if comp["answers_json"] else {}
+    ranking = json.loads(comp["ranking_json"]) if comp["ranking_json"] else []
+    ranking = sorted(ranking, key=lambda r: r.get("rank", 99))
+    return templates.TemplateResponse(request, "offers_detail.html", {
+        "c": comp, "offers": db.get_offers(oid), "questions": questions,
+        "answers": answers, "ranking": ranking,
+    })
+
+
+@app.post("/offers/{oid}/offer")
+async def offers_add_offer(
+    oid: str,
+    label: str = Form(...),
+    company: str = Form(""),
+    role_title: str = Form(""),
+    job_posting_text: str = Form(""),
+    compensation: str = Form(""),
+    benefits: str = Form(""),
+    relocation: str = Form(""),
+    other_notes: str = Form(""),
+    job_file: UploadFile = File(None),
+):
+    if not db.get_offer_comparison(oid):
+        return JSONResponse({"status": "error", "message": "Unknown comparison."}, status_code=404)
+    if not label.strip():
+        return JSONResponse({"status": "error", "message": "Give the offer a short label."},
+                            status_code=400)
+    tmp = None
+    try:
+        src = None
+        if job_file is not None and job_file.filename:
+            tmp = config.UPLOADS_DIR / f"_offerjd_{job_file.filename}"
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(job_file.file, f)
+            src = str(tmp)
+        fid = pipeline.add_offer_to_comparison(
+            oid, label.strip(), job_posting_source=src, job_posting_text=job_posting_text,
+            company=company, role_title=role_title, compensation=compensation,
+            benefits=benefits, relocation=relocation, other_notes=other_notes)
+        return JSONResponse({"status": "added", "offer_id": fid})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
+
+
+@app.post("/offers/{oid}/offer/{fid}/delete")
+def offers_delete_offer(oid: str, fid: str):
+    db.delete_offer(fid)
+    return RedirectResponse(f"/offers/{oid}", status_code=303)
+
+
+@app.post("/offers/{oid}/questions")
+def offers_generate_questions(oid: str):
+    if not config.readiness(config.load_settings())["ai"]:
+        return JSONResponse({"status": "error",
+                             "message": "An AI provider has not been configured yet. Open Settings."},
+                            status_code=400)
+    try:
+        qs = pipeline.generate_offer_questions(oid, log=lambda *_: None)
+        return JSONResponse({"status": "ok", "count": len(qs)})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+@app.post("/offers/{oid}/rank")
+async def offers_rank(oid: str, request: Request):
+    body = await request.json()
+    answers = body.get("answers", {})
+    if not any((v or "").strip() for v in answers.values()):
+        return JSONResponse(
+            {"status": "error", "message": "Answer at least one question before ranking."},
+            status_code=400)
+    try:
+        result = pipeline.rank_offer_comparison(oid, answers, log=lambda *_: None)
+        return JSONResponse({"status": "ranked", "count": len(result.get("ranking", []))})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+
+
+@app.post("/offers/{oid}/delete")
+def offers_delete(oid: str):
+    db.delete_offer_comparison(oid)
+    return RedirectResponse("/offers", status_code=303)
+
+
 # ---- interview prep ------------------------------------------------------
 _interview_jobs = {}  # iid -> {"log": [...], "running": bool}
 

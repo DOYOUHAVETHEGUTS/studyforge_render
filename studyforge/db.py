@@ -184,6 +184,38 @@ CREATE TABLE IF NOT EXISTS case_attempts (
 """
 
 
+OFFER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS offer_comparisons (
+    id            TEXT PRIMARY KEY,
+    title         TEXT DEFAULT '',
+    resume_text   TEXT DEFAULT '',        -- candidate context, shared across all offers
+    priorities    TEXT DEFAULT '',        -- free-text what matters to them
+    questions_json TEXT DEFAULT '',       -- generated mix of general + offer-specific
+    answers_json  TEXT DEFAULT '',        -- candidate's answers keyed by question id
+    ranking_json  TEXT DEFAULT '',        -- ranked offers w/ pros, cons, rationale
+    summary       TEXT DEFAULT '',        -- overall recommendation narrative
+    status        TEXT DEFAULT 'draft',   -- draft -> questioned -> ranked -> failed
+    error         TEXT DEFAULT '',
+    created_at    TEXT DEFAULT (datetime('now')),
+    updated_at    TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS offers (
+    id            TEXT PRIMARY KEY,
+    comparison_id TEXT NOT NULL,
+    label         TEXT NOT NULL,          -- "Company - Role" shorthand used in questions
+    company       TEXT DEFAULT '',
+    role_title    TEXT DEFAULT '',
+    job_posting   TEXT DEFAULT '',        -- extracted/pasted JD text
+    compensation  TEXT DEFAULT '',
+    benefits      TEXT DEFAULT '',
+    relocation    TEXT DEFAULT '',
+    other_notes   TEXT DEFAULT '',        -- ad hoc considerations
+    created_at    TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (comparison_id) REFERENCES offer_comparisons(id) ON DELETE CASCADE
+);
+"""
+
+
 @contextmanager
 def conn():
     c = sqlite3.connect(config.DB_PATH)
@@ -202,6 +234,7 @@ def init_db():
         c.executescript(INTERVIEW_SCHEMA)
         c.executescript(LANGUAGE_SCHEMA)
         c.executescript(CASE_STUDY_SCHEMA)
+        c.executescript(OFFER_SCHEMA)
         for stmt in _MIGRATIONS:
             try:
                 c.execute(stmt)
@@ -584,3 +617,68 @@ def update_case_attempt(aid, **fields):
     cols = ", ".join(f"{k}=?" for k in fields)
     with conn() as c:
         c.execute(f"UPDATE case_attempts SET {cols} WHERE id=?", list(fields.values()) + [aid])
+
+
+# ---- offer comparisons ---------------------------------------------------
+def add_offer_comparison(title="", resume_text="", priorities="") -> str:
+    oid = new_id()
+    with conn() as c:
+        c.execute("""INSERT INTO offer_comparisons (id, title, resume_text, priorities)
+                     VALUES (?,?,?,?)""", (oid, title, resume_text, priorities))
+    return oid
+
+
+def list_offer_comparisons():
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM offer_comparisons ORDER BY updated_at DESC")]
+
+
+def get_offer_comparison(oid):
+    with conn() as c:
+        r = c.execute("SELECT * FROM offer_comparisons WHERE id=?", (oid,)).fetchone()
+        return dict(r) if r else None
+
+
+def update_offer_comparison(oid, **fields):
+    if not fields:
+        return
+    cols = ", ".join(f"{k}=?" for k in fields)
+    with conn() as c:
+        c.execute(f"UPDATE offer_comparisons SET {cols}, updated_at=datetime('now') WHERE id=?",
+                  list(fields.values()) + [oid])
+
+
+def delete_offer_comparison(oid):
+    with conn() as c:
+        c.execute("DELETE FROM offer_comparisons WHERE id=?", (oid,))
+
+
+def add_offer(comparison_id, label, **kw) -> str:
+    fid = new_id()
+    with conn() as c:
+        c.execute("""INSERT INTO offers
+                     (id, comparison_id, label, company, role_title, job_posting,
+                      compensation, benefits, relocation, other_notes)
+                     VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                  (fid, comparison_id, label, kw.get("company", ""), kw.get("role_title", ""),
+                   kw.get("job_posting", ""), kw.get("compensation", ""), kw.get("benefits", ""),
+                   kw.get("relocation", ""), kw.get("other_notes", "")))
+    return fid
+
+
+def get_offers(comparison_id):
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM offers WHERE comparison_id=? ORDER BY created_at", (comparison_id,))]
+
+
+def get_offer(fid):
+    with conn() as c:
+        r = c.execute("SELECT * FROM offers WHERE id=?", (fid,)).fetchone()
+        return dict(r) if r else None
+
+
+def delete_offer(fid):
+    with conn() as c:
+        c.execute("DELETE FROM offers WHERE id=?", (fid,))

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ c.title }} — Offer Comparison</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/offers">← Offer Comparison</a>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">
+      <div><h1>{{ c.title }}</h1>
+        <div class="sub">{{ offers|length }} offer(s){% if c.priorities %} · priorities noted{% endif %}</div></div>
+      {% if c.status=='ranked' %}<span class="badge ok"><span class="dot"></span>Ranked</span>
+      {% elif c.status=='questioned' %}<span class="badge run"><span class="dot"></span>Questions ready</span>
+      {% else %}<span class="badge idle"><span class="dot"></span>{{ c.status }}</span>{% endif %}
+    </div>
+    <div style="display:flex;gap:9px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn" onclick="openAdd()">＋ Add offer</button>
+      <button class="btn primary" onclick="genQuestions()">{{ 'Regenerate questions' if questions else 'Generate questions' }}</button>
+      <form method="post" action="/offers/{{ c.id }}/delete" style="margin:0" onsubmit="return confirm('Delete this comparison?')"><button class="btn danger">Delete</button></form>
+    </div>
+    {% if c.error %}<div class="banner err" style="margin-top:14px"><div><b>Last action failed</b><div class="sub" style="margin-top:6px;font-family:monospace">{{ c.error }}</div></div></div>{% endif %}
+  </div>
+
+  <!-- ranking first when available -->
+  {% if ranking %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Ranking — best to least attractive for you</h3>
+      {% if c.summary %}<p class="sub">{{ c.summary }}</p>{% endif %}
+      {% for r in ranking %}
+      <div style="border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <b style="font-size:15px">#{{ r.rank }} — {{ r.offer_label }}</b>
+          {% if r.fit_score is not none %}<span class="badge {{ 'ok' if r.fit_score>=70 else 'warn' }}"><span class="dot"></span>Fit {{ r.fit_score }}/100</span>{% endif %}
+        </div>
+        {% if r.rationale %}<p style="margin:8px 0">{{ r.rationale }}</p>{% endif %}
+        <div class="split" style="gap:12px">
+          <div>{% if r.pros %}<b class="sub">Pros</b><ul>{% for p in r.pros %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</div>
+          <div>{% if r.cons %}<b class="sub">Cons</b><ul>{% for co in r.cons %}<li>{{ co }}</li>{% endfor %}</ul>{% endif %}</div>
+        </div>
+        {% if r.unknowns %}<div class="sub" style="margin-top:6px">⚠ Still unknown: {{ r.unknowns|join('; ') }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="sub" style="margin-top:14px">This ranking reflects your stated priorities and answers — treat it as a structured second opinion, not a decision.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- offers -->
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Offers</h3>
+      {% if offers %}
+      <div class="toc">
+        {% for o in offers %}
+        <div class="row">
+          <div class="t"><b>{{ o.label }}</b>
+            <small>
+              {% if o.company %}{{ o.company }}{% endif %}{% if o.role_title %} · {{ o.role_title }}{% endif %}
+              {% if o.compensation %} · {{ o.compensation }}{% endif %}
+              {% if o.relocation %} · relocation: {{ o.relocation }}{% endif %}
+            </small></div>
+          <form method="post" action="/offers/{{ c.id }}/offer/{{ o.id }}/delete" style="margin:0">
+            <button class="btn sm danger">Remove</button></form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="sub">No offers yet — add at least two to generate questions.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- questions -->
+  {% if questions %}
+  <div class="panel">
+    <div class="settings-section" style="margin-bottom:0">
+      <h3>Your answers</h3>
+      <p class="sub">A mix of general priority questions and ones specific to a single offer.
+        Answer what you can — then rank.</p>
+      {% for q in questions %}
+      <div style="margin-bottom:16px">
+        <div><span class="chip">{{ 'General' if q.kind=='general' else q.offer_label or 'Offer' }}</span></div>
+        <b style="display:block;margin:6px 0">{{ loop.index }}. {{ q.question }}</b>
+        {% if q.why_it_matters %}<div class="sub" style="margin-bottom:6px">{{ q.why_it_matters }}</div>{% endif %}
+        <textarea id="ans_{{ q.id }}" rows="3" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px" placeholder="Your answer…">{{ answers.get(q.id, '') }}</textarea>
+      </div>
+      {% endfor %}
+      <button class="btn primary" id="rankBtn" onclick="rank()">{{ 'Re-rank offers' if ranking else 'Rank my offers' }}</button>
+      <span class="sub" id="rankStatus" style="margin-left:12px"></span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- add offer modal -->
+  <div id="addModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-head"><b>Add an offer</b><span class="modal-close" onclick="closeAdd()">×</span></div>
+      <form id="addForm">
+        <div class="field-row"><label>Label *</label><input name="label" placeholder="e.g. Acme — Sr Analyst" required></div>
+        <div class="field-row"><label>Company</label><input name="company"></div>
+        <div class="field-row"><label>Role</label><input name="role_title"></div>
+        <div class="field-row"><label>Compensation</label><input name="compensation" placeholder="base, bonus, equity…"></div>
+        <div class="field-row"><label>Benefits</label><input name="benefits" placeholder="PTO, health, 401k match…"></div>
+        <div class="field-row"><label>Relocation</label><input name="relocation" placeholder="required? package? remote?"></div>
+        <div class="settings-section" style="margin-top:10px">
+          <h3>Job description</h3>
+          <textarea name="job_posting_text" rows="3" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Paste the JD…"></textarea>
+          <div class="sub" style="margin:6px 0">…or upload:</div>
+          <input type="file" name="job_file" accept=".pdf,.docx,.txt,.md">
+        </div>
+        <div class="settings-section">
+          <h3>Other considerations</h3>
+          <textarea name="other_notes" rows="2" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12.5px" placeholder="Team, manager, commute, growth path, gut feel, anything else…"></textarea>
+        </div>
+        <div id="addStatus" class="sub" style="margin:8px 0"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button type="button" class="btn" onclick="closeAdd()">Cancel</button>
+          <button type="submit" class="btn primary" id="addSubmit">Add offer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const OID = "{{ c.id }}";
+const QIDS = {{ questions|map(attribute='id')|list|tojson }};
+function openAdd(){ document.getElementById('addModal').style.display='flex'; }
+function closeAdd(){ document.getElementById('addModal').style.display='none'; }
+
+document.getElementById('addForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('addSubmit'); btn.disabled=true;
+  document.getElementById('addStatus').textContent='Adding…';
+  try{
+    const r = await fetch('/offers/'+OID+'/offer', {method:'POST', body:new FormData(e.target)});
+    const j = await r.json();
+    if(j.status==='added'){ location.reload(); }
+    else { document.getElementById('addStatus').textContent=j.message; btn.disabled=false; }
+  }catch(err){ document.getElementById('addStatus').textContent='Failed: '+err; btn.disabled=false; }
+});
+
+async function genQuestions(){
+  const r = await fetch('/offers/'+OID+'/questions', {method:'POST'});
+  const j = await r.json();
+  if(j.status==='ok'){ location.reload(); } else { alert(j.message); }
+}
+
+async function rank(){
+  const answers = {};
+  QIDS.forEach(id => { const el = document.getElementById('ans_'+id); if(el) answers[id]=el.value; });
+  const btn = document.getElementById('rankBtn'); btn.disabled=true;
+  document.getElementById('rankStatus').textContent='Ranking…';
+  try{
+    const r = await fetch('/offers/'+OID+'/rank', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({answers})});
+    const j = await r.json();
+    if(j.status==='ranked'){ location.reload(); }
+    else { document.getElementById('rankStatus').textContent=j.message; btn.disabled=false; }
+  }catch(err){ document.getElementById('rankStatus').textContent='Failed: '+err; btn.disabled=false; }
+}
+</script>
+</body>
+</html>

@@ -163,3 +163,20 @@ resume-grounded gaps, cross-prep job-posting sourcing, and cascade-delete of att
   approach the answer aligns with. Correct → a brief note on what satisfied it. Wrong →
   detailed feedback on what a strong answer would have covered. Résumé-grounded gaps are
   called out only with real textual support, not speculation.
+
+## Offer comparison (nested under Interview Prep)
+
+- Entry point sits on the Interview Prep page — it's the same job-search workflow, but
+  compares *across* opportunities instead of preparing for one.
+- Add 2+ offers, each with a job description (pasted or uploaded/extracted), compensation,
+  benefits, relocation, and free-text "other considerations". Résumé and a "what matters to
+  you" field are captured once and shared across the comparison.
+- **Questions are a deliberate mix**: general priority questions (comp vs growth, relocation
+  tolerance, risk appetite) *and* offer-specific ones tied to a concrete detail of one named
+  offer. Each carries a "why it matters" line so the candidate sees the tradeoff being probed.
+- **Ranking** orders offers best→least attractive *for this candidate*, with pros, cons, a
+  fit score, and a rationale per offer. Facts must trace to the offers/résumé/answers —
+  genuinely missing information is surfaced as `unknowns` ("equity value not provided")
+  rather than guessed at, and the UI frames the result as a structured second opinion, not
+  a decision.
+- Answers persist, so the candidate can revise them and re-rank.
